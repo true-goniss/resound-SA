@@ -1,0 +1,3 @@
+a tool to reencode large-weight GTA V wav files into mp3 320kbps
+
+needs python to be installed and FFmpeg (ffmpeg.exe) in the running folder
