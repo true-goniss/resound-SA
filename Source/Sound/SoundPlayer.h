@@ -26,7 +26,7 @@ class SoundPlayer
     float freqInitVal = 44100.0f;
     float* channelFrequency = &freqInitVal;
 
-    //float basicVolume = 0.23f;
+    float currentVolume = 0.0f;
 
     bool CheckChannel() {
         if (isEmpty) return false;
@@ -96,6 +96,8 @@ public:
             std::pair artistAndName = Utils::GetTrackArtistAndName(rawFilename);
             if (showTrackInfoOnNewTrack) TrackInfoVisual::ShowWithAnimation(artistAndName.first, artistAndName.second);
 
+            BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, currentVolume);
+
             bassChannel = stream;
             BASS_ChannelPlay(bassChannel, FALSE);
             trackIsPlaying = true;
@@ -106,7 +108,6 @@ public:
             }
 
             BASS_ChannelGetAttribute(stream, BASS_ATTRIB_FREQ, channelFrequency);
-
         }
         else {
             // BASS_Free();
@@ -342,6 +343,8 @@ public:
 
     void setVolume(float volume) {
         if (!CheckChannel()) return;
+
+        this->currentVolume = volume;
 
         BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, volume);
     }

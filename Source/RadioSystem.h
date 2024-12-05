@@ -34,9 +34,11 @@ static class RadioSystem
         patch::RedirectJump(0x4EB660, RadioSystem::Event_SA_RetuneRadio); // CAERadioTrackManager::CheckForStationRetune()
         patch::RedirectJump(0x507030, RadioSystem::Disable_SA_RadioName); // CAudioEngine::DisplayRadioStationName
 
-        Events::processScriptsEvent += [] {
+        Events::gameProcessEvent += [] {
             ManagePlayback();
         };
+
+        //Events::
 
         std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
         soundFadeProcessThread.detach();
@@ -121,8 +123,6 @@ static class RadioSystem
 
     static void ManagePlayback() {
 
-        if (Command<Commands::IS_PLAYER_PLAYING>(0) == false) return;
-
         if (!isStationsLaunched)
         {
             isStationsLaunched = true;
@@ -132,7 +132,7 @@ static class RadioSystem
 
         CPed* playa = FindPlayerPed();
 
-        if (!(Command<Commands::IS_CHAR_IN_ANY_CAR>(playa) && CanRetuneRadioStation()))
+        if (!(Command<Commands::IS_PLAYER_PLAYING>(0) && CanRetuneRadioStation(playa, FindPlayerVehicle(-1, false))))
         {
             MuteCustomStations();
         }
@@ -182,7 +182,9 @@ static class RadioSystem
         CVehicle* foundVehicle = FindPlayerVehicle(-1, false);
         CPed* playa = FindPlayerPed();
 
-        if (!Command<Commands::IS_CHAR_IN_ANY_CAR>(playa))
+        bool playaIsDriving = Command<Commands::IS_CHAR_IN_ANY_CAR>(playa);
+
+        if (!playaIsDriving)
         {
             customStationAfterReenteringVehicleBeenSet = false;
             isReenteredVehicle = true;
@@ -204,22 +206,21 @@ static class RadioSystem
         int MaxRadioID = SA_Radio_Stations.size() + Custom_Radio_Stations.size();
 
 
-        if (foundVehicle && CanRetuneRadioStation()) {
+        if (foundVehicle && CanRetuneRadioStation(playa, foundVehicle)) {
 
-            if (CanRetuneRadioStation()) {
-                if (mouseWheelDown) 
-                {
-                    CurrentRadioId--;
-                    if (CurrentRadioId < 1) CurrentRadioId = MaxRadioID;
-                    isRadioStationChanged = true;
-                }
-                else if (mouseWheelUp) 
-                {
-                    CurrentRadioId++;
-                    if (CurrentRadioId > MaxRadioID) CurrentRadioId = 1;
-                    isRadioStationChanged = true;
-                }
+            if (mouseWheelDown) 
+            {
+                CurrentRadioId--;
+                if (CurrentRadioId < 1) CurrentRadioId = MaxRadioID;
+                isRadioStationChanged = true;
             }
+            else if (mouseWheelUp) 
+            {
+                CurrentRadioId++;
+                if (CurrentRadioId > MaxRadioID) CurrentRadioId = 1;
+                isRadioStationChanged = true;
+            }
+            
 
             if (isRadioStationChanged) {
 
@@ -233,9 +234,11 @@ static class RadioSystem
             }
         }
 
-        if (STATE == "retuneRadio" && CTimer::m_snTimeInMilliseconds > retuneTime) {
-            RetuneRadio(RetuneId);
+        if (STATE == "retuneRadio" && (!playaIsDriving || CTimer::m_snTimeInMilliseconds > retuneTime)) {
+            InterfaceSounds::Stop("retuneloop");
             STATE = "none";
+
+            if (CanRetuneRadioStation(playa, foundVehicle)) RetuneRadio(RetuneId);
         }
 
         if (CassettePlayer::IsNowActive()) return;
@@ -284,8 +287,6 @@ static class RadioSystem
 
             PreviousRadioId = id;
         }
-
-        InterfaceSounds::Stop("retuneloop");
 
         CurrentRadioId = id;
     }
@@ -397,13 +398,9 @@ static class RadioSystem
         Custom_Radio_Stations[index]->Unmute();
     }
 
-    static bool CanRetuneRadioStation() {
-        bool result = true;
-
-        if (FindPlayerVehicle(-1, 0) && FindPlayerVehicle(-1, 0)->m_vehicleAudio.m_settings.m_nRadioType != RADIO_CIVILIAN)
-            result = false;
-
-        return result;
+    static bool CanRetuneRadioStation(CPed* playa, CVehicle* vehicle) {
+        if (Command<Commands::IS_CHAR_DEAD>(playa) || Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa) || !Command<Commands::IS_CHAR_IN_ANY_CAR>(playa)) return false;
+        return (!(vehicle && vehicle->m_vehicleAudio.m_settings.m_nRadioType != RADIO_CIVILIAN));
     }
 
 };

@@ -83,6 +83,7 @@ class RadioStation
 
     virtual void Randomize() {
         musicPlayer->randomizePosition();
+        Mute();
     }
 
     virtual void Stop() {
@@ -115,7 +116,6 @@ class RadioStation
     virtual void Launch() {
         PlayMusicTrack();
         Randomize();
-        Mute();
     }
 
     virtual std::pair<std::string, std::string> TryGetArtistTitle() const {
@@ -193,6 +193,9 @@ class RadioStation
             unsigned int intValue = (*radioVolume) & 0x7F;
             float volumeValue = Utils::Lerp(0.0f, maxRadioVolume, (float)intValue / 64.0f);
             basicVolume = volumeValue;
+        }
+        else {
+            basicVolume = 0.0f;
         }
     }
 };
