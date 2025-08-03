@@ -1,4 +1,9 @@
 #pragma once
+
+/*
+	gon_iss (c) 2025
+*/
+
 #include <plugin.h>
 #include <game_sa\CAudioEngine.h>
 #include "../Utils/Timer.h"
@@ -63,9 +68,6 @@ static class ResoundAudioEngine
 	static inline void OnSlowMoActivation(SlowMoType type) {
 		sfxBasicVolume = GetSFXVolumeSA();
 
-		//std::thread manage(Async::main);
-		//manage.detach();
-
 		if (type == SlowMoType::AUD_SLOWMO_RADIOWHEEL) {
 			soundFadeSlowMoSFX->Activate();
 		}
@@ -78,7 +80,6 @@ static class ResoundAudioEngine
 
 public:
 
-
 	static inline bool init = false;
 
 	static void Initialize() {
@@ -90,41 +91,7 @@ public:
 		soundFadeSFXProcessThread.detach();
 
 		void* targetAddress = (void*)0x4EF440;
-
-		//plugin::patch(targetAddress, GetSlowMoFrequencyScalingFactorHook);
-		//onGetSlowMoFrequencyScalingFactor += [](CAESound* pThis) {
-		//	return 0.0f;
-		//};
-
-		//tthread.detach();
-
-		//Reverb::ReverbInit();
-		//Reverb::ApplyReverbEffectToChannels();
 	}
-
-
-
-	//float ModifySlowMoFrequencyScaling(CAESound* pThis)
-	//{
-	//	// Call the original function to preserve default behavior
-	//	float originalScalingFactor = 1.f;
-
-	//	// Modify the frequency scaling factor (pitch multiplier)
-	//	float customScalingFactor = 1.0f;
-
-	//	if (CTimer::GetIsSlowMotionActive()) {
-	//		customScalingFactor = 2.0f; // Example: double the pitch during slow-motion
-	//	}
-
-	//	// Optionally, you can add more conditions to adjust the scaling factor for different scenarios
-	//	//if (CCamera::GetActiveCamera().m_nMode == eCamMode::MODE_CAMERA) {
-	//	//	customScalingFactor = 1.0f; // Reset the scaling factor if in a specific camera mode
-	//	//}
-
-	//	// Return the custom scaling factor (multiply the original scaling factor by our custom factor)
-	//	return originalScalingFactor * customScalingFactor;
-	//}
-
 
 	static void ActivateSlowMoMode(SlowMoType type) {
 		if (!isSlowMoActive) {
@@ -152,19 +119,3 @@ public:
 		return GetSettingsVolume(MenuVolumeMemoryAddress::SFX);
 	}
 };
-
-
-
-//if (isSlowMoActive) {
-//	SetSFXVolumeSA(soundFadeSlowMoSFX->GetValue(sfxBasicVolume * 0.1f, sfxBasicVolume, 1100, 200000));
-//}
-//else {
-//	//if (!tmrDisableSlowMoSoundFade.IsComplete(1100, true)) {
-//	//	continue;
-//	//}
-//	//else {
-//	//	SetSFXVolumeSA(soundFadeSlowMoSFX->GetValue(sfxBasicVolume * 0.1f, sfxBasicVolume, 1100, 200000));
-//	//}
-
-//	//SetSFXVolumeSA(1.0f);
-//}

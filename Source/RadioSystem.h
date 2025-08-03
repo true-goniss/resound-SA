@@ -128,12 +128,6 @@ static class RadioSystem
             }
         }
 
-        for (const std::string& station_name : SA_Radio_Stations) {
-            RadioStation* station;
-
-
-        }
-
         RadioIcons::Initialize(SA_Radio_Stations, Custom_Radio_Stations);
 
         std::unique_ptr<IRadioWheelItemFactory> factory;
@@ -155,10 +149,6 @@ static class RadioSystem
 
         radioWheel->OnSelectionChanged = RadioWheelSelectionChanged;
         radioWheel->OnSelectionSelected = RadioWheelSelectionSelected;
-
-        //RadioWheel::Initialize(Custom_Radio_Stations);
-        //RadioWheel::OnSelectionChanged = RadioWheelSelectionChanged;
-        //RadioWheel::OnSelectionSelected = RadioWheelSelectionSelected;
     }
 
 
