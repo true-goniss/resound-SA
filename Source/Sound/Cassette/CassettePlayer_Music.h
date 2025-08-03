@@ -27,7 +27,7 @@ class CassettePlayer_Music
 public:
 
     SoundPlayer* soundPlayer = new SoundPlayer("resound//music");
-    unsigned int timeLastKeypress = CTimer::m_snTimeInMilliseconds;
+    unsigned int timeLastKeypress = CurrentTime();
 
     CassettePlayer_Music() {
         soundPlayer->setVolume(basicVolume);
@@ -74,7 +74,7 @@ protected:
             this_thread::sleep_for(chrono::milliseconds(80));
 
             if (KeyPressed(VK_INSERT) && Utils::timePassedEnough(timeLastKeypress, 300)) {
-                timeLastKeypress = CTimer::m_snTimeInMilliseconds;
+                timeLastKeypress = CurrentTime();
                 PlayPreviousTrack();
             }
 
@@ -83,7 +83,7 @@ protected:
             //}
 
             if ((KeyPressed(VK_END) && Utils::timePassedEnough(timeLastKeypress, 1200))) {
-                timeLastKeypress = CTimer::m_snTimeInMilliseconds;
+                timeLastKeypress = CurrentTime();
 
                 if (!soundPlayer->hasPlayedAnyTrack()) {
                     PlayNewTrack();
@@ -114,8 +114,7 @@ protected:
                 fastFwdPressed = false;
             }
 
-            if (KeyPressed(VK_DELETE) && CTimer::m_snTimeInMilliseconds > (timeLastKeypress + 300)) {
-                //timeLastKeypress = CTimer::m_snTimeInMilliseconds;
+            if (KeyPressed(VK_DELETE) && CurrentTime() > (timeLastKeypress + 300)) {
 
                 CassetteInterfaceTextures::textureCurrent = "rewind";
                 
@@ -147,8 +146,8 @@ protected:
                 }
             }
 
-            if (KeyPressed(VK_PRIOR) && CTimer::m_snTimeInMilliseconds > (timeLastKeypress + 300)) {
-                timeLastKeypress = CTimer::m_snTimeInMilliseconds;
+            if (KeyPressed(VK_PRIOR) && CurrentTime() > (timeLastKeypress + 300)) {
+                timeLastKeypress = CurrentTime();
                 PauseTrack(false);
                 PlayNewTrack();
             }

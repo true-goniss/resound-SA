@@ -16,6 +16,8 @@ public:
 
     static inline std::map<std::string, HSTREAM> BASS_Streams;
 
+    static inline const std::string radioInterfaceSoundsPath = "resound\\sounds\\radiosystem\\";
+
     static HSTREAM Play(const std::string& path, const std::string& soundName, bool looped, bool playIfAlreadyPlaying) {
 
         if (soundWasPlayed(soundName) && BASS_ChannelIsActive(BASS_Streams[soundName]) && !playIfAlreadyPlaying) {

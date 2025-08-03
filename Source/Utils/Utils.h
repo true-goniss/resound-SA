@@ -1,6 +1,8 @@
 ﻿#pragma once
 #include <game_sa/CTimer.h>
+#include <game_sa/CCamera.h>
 #include "CClock.h"
+#include "Timer.h"
 
 #include <filesystem>
 #include <random>
@@ -77,7 +79,16 @@ static class Utils
     /*  -----------------------------  math --------------------------------- */
 
     static float getElapsedTimePercentage(float amountOfTimeMs, float initialTime) {
-        int currentTime = CTimer::m_snTimeInMilliseconds;
+        int currentTime = CurrentTime();
+        int elapsedTime = currentTime - initialTime;
+
+        float percentage = static_cast<float>(elapsedTime) / static_cast<float>(amountOfTimeMs) * 100.0f;
+
+        return normalisePercent(percentage);
+    }
+
+    static float getElapsedTimerTimePercentage(Timer<CurrentTime> tmr, float amountOfTimeMs, float initialTime) {
+        int currentTime = tmr.GetTime();
         int elapsedTime = currentTime - initialTime;
 
         float percentage = static_cast<float>(elapsedTime) / static_cast<float>(amountOfTimeMs) * 100.0f;
@@ -86,12 +97,12 @@ static class Utils
     }
 
     static int getElapsedTimeMs(float initialTime) {
-        int currentTime = CTimer::m_snTimeInMilliseconds;
+        int currentTime = CurrentTime();
         return currentTime - initialTime;
     }
 
     static bool timePassedEnough(unsigned int lastKeyPressedTime, unsigned int timeThreshold) {
-        return CTimer::m_snTimeInMilliseconds > (lastKeyPressedTime + timeThreshold);
+        return CurrentTime() > (lastKeyPressedTime + timeThreshold);
     }
 
     static int timeToMilliseconds(const std::string& time) {
@@ -109,6 +120,10 @@ static class Utils
     // linear interpolation
     static float Lerp(float a, float b, float t) {
         return a + t * (b - a);
+    }
+
+    static float Selectf(float condition, float a, float b) {
+        return (condition >= 0) ? Lerp(a, b, condition) : Lerp(b, a, -condition);
     }
 
     // map a value from one range to another
@@ -138,6 +153,10 @@ static class Utils
         std::bernoulli_distribution dist(trueProbability);
 
         return dist(gen);
+    }
+
+    static float getDistance(float x1, float y1, float x2, float y2) {
+        return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
     }
 
     /*  -------------------------  filesystem ------------------------------ */
@@ -411,5 +430,39 @@ static class Utils
         std::wstring wideStr(bufferSize, L'\0'); // Use wide character type
         MultiByteToWideChar(CP_UTF8, 0, narrowStr.c_str(), -1, &wideStr[0], bufferSize);
         return wideStr;
+    }
+
+    static inline std::string getCurrentTimeString() {
+        std::ostringstream oss;
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+        oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
+        return oss.str();
+    };
+
+    /* ----------  game ----------- */
+
+    static inline void SetGameSpeed(float speedMultiplier) {
+        if (speedMultiplier > 0.0f) {
+            CTimer::ms_fTimeScale = speedMultiplier;
+        }
+    }
+
+    static inline float nPrevCamHor = 0.0f;
+    static inline float nPrevCamVer = 0.0f;
+
+    static inline void ResetCameraMovement() {
+        TheCamera.m_fMouseAccelHorzntl = nPrevCamHor;
+        TheCamera.m_fMouseAccelVertical = nPrevCamVer;
+        nPrevCamHor = 0.0f;
+        nPrevCamVer = 0.0f;
+    }
+
+    static inline void DisableCameraMovement() {
+        nPrevCamHor = TheCamera.m_fMouseAccelHorzntl;
+        nPrevCamVer = TheCamera.m_fMouseAccelVertical;
+
+        TheCamera.m_fMouseAccelHorzntl = 0.0f;
+        TheCamera.m_fMouseAccelVertical = 0.0f;
     }
 };

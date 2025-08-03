@@ -1,4 +1,13 @@
 #pragma once
+
+/*
+         
+    gon_iss  (c) 2024 - 2025
+
+    source repository : https://github.com/true-goniss/resound-SA
+
+*/
+
 #include <plugin.h>
 #include "extensions/ScriptCommands.h"
 
@@ -37,8 +46,15 @@ public:
                 Fonts::fArtist = fontArtist;
                 Fonts::fTrack = fontTrack;
                 CassettePlayer::Initialize();
+                ResoundAudioEngine::Initialize();
                 RadioSystem::Initialize();
             }
+
+
+        };
+
+        Events::drawHudEvent += [] {
+            //Async::ProcessMainThreadEvents();
         };
 
         

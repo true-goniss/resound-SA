@@ -2,6 +2,7 @@ packages.config
 *.vcxproj
 *.vcxproj.user
 *.vcxproj.filters
+trash.h
 
 .obj/
 .git/

@@ -101,6 +101,32 @@ public:
         }
     }
 
+    void DrawCentered(const char* text, bool outline, float outlinePx, D3DCOLOR outlineColor, D3DCOLOR textColor, int offset_Y) {
+        if (m_pD3DXFont) {
+            RECT rect;
+            rect.left = 0;
+            rect.top = 0;
+            rect.bottom = RsGlobal.maximumHeight;
+            rect.right = RsGlobal.maximumWidth;
+
+            RECT textSizeRect = rect;
+            m_pD3DXFont->DrawTextA(NULL, text, -1, &textSizeRect, DT_CALCRECT, 0);
+
+            // center the text almost at the top
+            int screenWidth = RsGlobal.maximumWidth;
+            int screenHeight = RsGlobal.maximumHeight;
+            int textWidth = textSizeRect.right - textSizeRect.left;
+            int textHeight = textSizeRect.bottom - textSizeRect.top;
+            int x = (screenWidth - textWidth) / 2; // Center horizontally
+            int y = (screenHeight - textHeight) / 2 + offset_Y; // Center vertically + offset
+
+            RECT centeredRect = { x, y, x + textWidth, y + textHeight };
+
+            if (outline) DrawOutline(outlinePx, centeredRect, outlineColor, text);
+            m_pD3DXFont->DrawTextA(NULL, text, -1, &centeredRect, DT_TOP, textColor);
+        }
+    }
+
     DXFont() : m_pD3DXFont(nullptr) {
         m_pD3DXFont = NULL;
 

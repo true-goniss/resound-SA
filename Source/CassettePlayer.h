@@ -22,19 +22,19 @@ static class CassettePlayer
 
     static inline float showFromDownAnimTime = 350.0f;
 
-    static inline unsigned int last_show_keypressed = CTimer::m_snTimeInMilliseconds;
-    static inline unsigned int last_show_event_time = CTimer::m_snTimeInMilliseconds;
+    static inline unsigned int last_show_keypressed = CurrentTime();
+    static inline unsigned int last_show_event_time = CurrentTime();
     static inline bool show_direction = false;
 
     static void ProcessShowState() {
 
         if (Keys::GetKeyJustDown(67)) {
 
-            if (CTimer::m_snTimeInMilliseconds - last_show_event_time < 800) return;
+            if (CurrentTime() - last_show_event_time < 800) return;
 
-            if (CTimer::m_snTimeInMilliseconds - last_show_keypressed < 700) {
+            if (CurrentTime() - last_show_keypressed < 700) {
                 show_direction = !show_direction;
-                last_show_event_time = CTimer::m_snTimeInMilliseconds;
+                last_show_event_time = CurrentTime();
 
                 showFromDownAnimation->Activate(show_direction);
 
@@ -50,7 +50,7 @@ static class CassettePlayer
             }
             else
             {
-                last_show_keypressed = CTimer::m_snTimeInMilliseconds;
+                last_show_keypressed = CurrentTime();
             }
         }
 
@@ -58,11 +58,8 @@ static class CassettePlayer
 
         if (Command<Commands::IS_CHAR_DEAD>(playa) || Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa)) 
         {
-            if (!showFromDownAnimation->isAnimationNow) {
-                showFromDownAnimTime = 6500;
-                showFromDownAnimation->Activate(false);
-                PauseMusic();
-            }
+            showFromDownAnimTime = 6500;
+            Hide();
         }
         else {
             showFromDownAnimTime = 350.0f;
@@ -134,7 +131,7 @@ static class CassettePlayer
             else if
                (RadioInfoVisual::opacityAnimationText->isAnimationNow)
             {
-                RadioInfoVisual::DrawRadioInfo(Fonts::fArtist, Fonts::fTrack);
+                RadioInfoVisual::DrawRadioInfo(Fonts::fArtist, Fonts::fTrack, false);
             }
         };
 
@@ -146,6 +143,14 @@ static class CassettePlayer
             DeleteTextures();
             TrackInfoVisual::Delete();
         };
+    }
+
+    static void Hide() {
+        if (!showFromDownAnimation->isAnimationNow) {
+
+            showFromDownAnimation->Activate(false);
+            PauseMusic();
+        }
     }
 
     static bool IsNowActive() {

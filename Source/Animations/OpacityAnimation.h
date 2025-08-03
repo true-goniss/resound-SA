@@ -3,7 +3,6 @@
 */
 
 #pragma once
-#include <game_sa/CTimer.h>
 #include "../Utils/Utils.h"
 
 class OpacityAnimation
@@ -18,7 +17,7 @@ public:
 
 	OpacityAnimation() {
 		animationFadeOut = false;
-		animationTime = CTimer::m_snTimeInMilliseconds;
+		animationTime = CurrentTime();
 		isAnimationNow = false;
 		opacity = 0;
 	}
@@ -42,7 +41,7 @@ public:
 			opacity = (Utils::normalisePercent(timePerc) / 100) * maxOpacity;
 
 			if (timePerc > 99 && Utils::getElapsedTimeMs(animationTime) > (fadeTime + showingTime)) {
-				animationTime = CTimer::m_snTimeInMilliseconds;
+				animationTime = CurrentTime();
 				animationFadeOut = true;
 			}
 		}
@@ -51,7 +50,7 @@ public:
 	}
 
 	void Activate() {
-		animationTime = CTimer::m_snTimeInMilliseconds;
+		animationTime = CurrentTime();
 		animationFadeOut = false;
 		isAnimationNow = true;
 	}

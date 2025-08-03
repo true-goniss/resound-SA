@@ -3,7 +3,6 @@
 */
 
 #pragma once
-#include <game_sa/CTimer.h>
 #include "Utils/Utils.h"
 
 
@@ -29,36 +28,53 @@ ____		   ____ ---- basicVolume
 class SoundFade
 {
     unsigned int activationTime;
+    bool isFadeInNow;
     bool isFadeOutNow;
     float volume;
     bool curveDirection = true;
+    bool indefinite = false;
+    bool paused = false;
+    bool wasUnpaused = false;
+    float showingTime = 0;
+    float fadeTime = 0;
 
 public:
 
     bool isActive;
 
-    SoundFade(bool curveDirection) {
+    SoundFade(bool curveDirection, bool indefinite = false) {
         this->curveDirection = curveDirection;
+        isFadeInNow = false;
         isFadeOutNow = false;
-        activationTime = CTimer::m_snTimeInMilliseconds;
+        activationTime = CurrentTime();
         isActive = false;
+        this->indefinite = indefinite;
         volume = 0.0f;
     }
 
     float GetValue(float curveVolume, float basicVolume, int fadeTime, int showingTime) {
 
-        if (curveDirection) {
-            if (!isActive) return basicVolume;
-        }
-        else {
-            if (!isActive) return curveVolume;
+        paused = (!isFadeInNow && !isFadeOutNow && indefinite && !wasUnpaused);
+
+        if (paused) {
+            return volume;
         }
 
-        float timePerc = 0;
+        if (!isActive) {
+            return curveDirection ? basicVolume : curveVolume;
+        }
+
+        //if (curveDirection) {
+        //    if (!isActive || paused) return basicVolume;
+        //}
+        //else {
+        //    if (!isActive || paused) return curveVolume;
+        //}
+
+
+        float timePerc = Utils::getElapsedTimePercentage(fadeTime, activationTime);
 
         if (isFadeOutNow) {
-
-            timePerc = Utils::getElapsedTimePercentage(fadeTime, activationTime);
 
             if (curveDirection) {
                 volume = basicVolume - ((basicVolume - curveVolume) * (1.0f - (timePerc / 100.0f)));
@@ -71,30 +87,48 @@ public:
                 isFadeOutNow = false;
                 isActive = false;
             }
+
+            return volume;
+        }
+
+
+        if (curveDirection) {
+            volume = basicVolume - ((basicVolume - curveVolume) * ((timePerc / 100.0f)));
         }
         else {
+            volume = basicVolume + ((curveVolume - basicVolume) * (1.0f - (timePerc / 100.0f)));
+        }
 
-            timePerc = Utils::getElapsedTimePercentage(fadeTime, activationTime);
+        
 
-            if (curveDirection) {
-                volume = basicVolume - ((basicVolume - curveVolume) * ((timePerc / 100.0f)));
-            }
-            else {
-                volume = basicVolume + ((curveVolume - basicVolume) * (1.0f - (timePerc / 100.0f)));
-            }
+        //if (!isFadeInNow && indefinite && !wasUnpaused) paused = true;
 
-            if (timePerc > 99 && Utils::getElapsedTimeMs(activationTime) > (fadeTime + showingTime)) {
-                activationTime = CTimer::m_snTimeInMilliseconds;
-                isFadeOutNow = true;
-            }
+        this->showingTime = showingTime;
+        this->fadeTime = fadeTime;
+
+        if (timePerc > 99 && Utils::getElapsedTimeMs(activationTime) > (fadeTime + showingTime)) {
+            activationTime = CurrentTime();
+            isFadeOutNow = true;
+        }
+        else {
+            isFadeInNow = Utils::getElapsedTimeMs(activationTime) < (fadeTime);
         }
 
         return volume;
     }
 
+    void Deactivate() {
+        isFadeOutNow = true;
+        paused = false;
+        wasUnpaused = true;
+        activationTime = CurrentTime();
+    }
+
     void Activate() {
         isActive = true;
-        activationTime = CTimer::m_snTimeInMilliseconds;
+        activationTime = CurrentTime();
+        isFadeInNow = true;
         isFadeOutNow = false;
+        wasUnpaused = false;
     }
 };

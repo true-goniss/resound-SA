@@ -13,6 +13,8 @@ static class Keys
 {
 #define MOUSE_CUSTOM_OFFSET (2000)
 
+public:
+
     static bool GetKeyDown(int key) {
         if (key < 255) {
             if (CPad::NewKeyState.standardKeys[key])
@@ -250,8 +252,6 @@ static class Keys
         return !GetKeyDown(key) && !GetKeyJustDown(key);
     }
 
-
-public:
     static bool GetKeyJustDown(int key) {
 
         if (key < 255) {

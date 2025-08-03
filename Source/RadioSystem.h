@@ -5,14 +5,18 @@
 #include "plugin.h"
 //#include "CHud.h"
 
+#include "CassettePlayer.h"
 #include "Sound/Radio/RadioStation.h"
 #include "Sound/Radio/RadioStation_IIIVC.h"
 #include "Sound/Radio/RadioStation_V.h"
 #include "Sound/Radio/RadioStation_V_Talk.h"
 #include "Sound/Radio/RadioStation_ConsistentlyPlayed.h"
 
+
 #include "Settings/Settings.h"
 #include "Sound/Radio/Utils/MusicTracksNames_SA.h"
+
+#include "Components/RadioWheel/RadioWheel.h"
 
 
 namespace fs = std::filesystem;
@@ -21,6 +25,8 @@ using namespace plugin;
 
 static class RadioSystem
 {
+    static inline RadioWheel* radioWheel = new RadioWheel();;
+
     public:
 
     static inline void Initialize() {
@@ -43,10 +49,16 @@ static class RadioSystem
         std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
         soundFadeProcessThread.detach();
 
-        InitializeCustomStations();
+        InitializeRadioStations();
+    }
+
+    static int GetCurrentRadioId() {
+        return CurrentRadioId;
     }
 
     protected:
+
+    static inline std::vector<RadioStation*> Custom_Radio_Stations;
 
     static inline CAERadioTrackManager* manager = &AERadioTrackManager;
 
@@ -55,8 +67,8 @@ static class RadioSystem
 
     static inline int RetuneId = 1;
 
-    static inline unsigned int getTrackNameTime = CTimer::m_snTimeInMilliseconds;
-    static inline unsigned int retuneTime = CTimer::m_snTimeInMilliseconds;
+    static inline unsigned int getTrackNameTime = CurrentTime();
+    static inline unsigned int retuneTime = CurrentTime();
 
     static inline bool Initialised = false;
     static inline bool isRadioStationChanged = false;
@@ -71,20 +83,18 @@ static class RadioSystem
 
     static inline std::vector<std::pair<std::string, std::string>> SA_Radio_Current_ArtistTracks = { std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", ""), std::make_pair("", "") };
 
-    static inline const std::string radioInterfaceSoundsPath = "resound\\sounds\\radiosystem\\";
     static inline std::string STATE = "none";
 
-    static inline std::vector<RadioStation*> Custom_Radio_Stations;
     static inline CVehicle* vehicle = NULL;
 
     static inline CAudioEngine* eng = &AudioEngine;
-    static inline int lastTalkTime = CTimer::m_snTimeInMilliseconds;
-    static inline int talkFadeOutTime = CTimer::m_snTimeInMilliseconds;
+    static inline int lastTalkTime = CurrentTime();
+    static inline int talkFadeOutTime = CurrentTime();
     static inline float volumeDecreaseOnTalkMult = 0.2f;
 
     static inline void Disable_SA_RadioName() {}
 
-    static void InitializeCustomStations() {
+    static void InitializeRadioStations() {
 
         fs::path directoryPath = "resound\\radio";
 
@@ -118,8 +128,61 @@ static class RadioSystem
             }
         }
 
-        RadioInfoVisual::InitializeIcons(SA_Radio_Stations, Custom_Radio_Stations);
+        for (const std::string& station_name : SA_Radio_Stations) {
+            RadioStation* station;
+
+
+        }
+
+        RadioIcons::Initialize(SA_Radio_Stations, Custom_Radio_Stations);
+
+        std::unique_ptr<IRadioWheelItemFactory> factory;
+
+        switch (RadioWheel::WheelType::Custom) {
+        case RadioWheel::WheelType::Standard:
+            factory = std::make_unique<StandardWheelFactory>();
+            break;
+        case RadioWheel::WheelType::Custom:
+            factory = std::make_unique<CustomWheelFactory>(Custom_Radio_Stations);
+            break;
+        case RadioWheel::WheelType::Combined:
+            factory = std::make_unique<CombinedWheelFactory>(Custom_Radio_Stations);
+            break;
+        }
+
+        radioWheel->Initialize(std::move(factory));
+        radioWheel->SyncWithSystem(CurrentRadioId);
+
+        radioWheel->OnSelectionChanged = RadioWheelSelectionChanged;
+        radioWheel->OnSelectionSelected = RadioWheelSelectionSelected;
+
+        //RadioWheel::Initialize(Custom_Radio_Stations);
+        //RadioWheel::OnSelectionChanged = RadioWheelSelectionChanged;
+        //RadioWheel::OnSelectionSelected = RadioWheelSelectionSelected;
     }
+
+
+
+
+    static void RadioWheelSelectionChanged(const RadioWheelItem& item) {
+        DisableRadio();
+        InterfaceSounds::Stop("retuneloop");
+        InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "retuneloop.mp3", "retuneloop", true, false);
+        InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "radioselect.mp3", "radioselect", false, true);
+
+        RadioInfoVisual::SetInfo(
+            item.name,
+            item.artist,
+            item.title,
+            item.name,
+            true
+        );
+    };
+
+    static void RadioWheelSelectionSelected(const RadioWheelItem& item) {
+        InterfaceSounds::Stop("retuneloop");
+        RetuneRadio(item.stationId);
+    };
 
     static void ManagePlayback() {
 
@@ -137,7 +200,7 @@ static class RadioSystem
             MuteCustomStations();
         }
 
-        if (Command<Commands::IS_CHAR_DEAD>(playa) || Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa))
+        if (Command<Commands::IS_CHAR_DEAD>(playa) || Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa) || playa->m_fHealth <= 0.0f)
         {
             MuteCustomStations();
 
@@ -146,14 +209,16 @@ static class RadioSystem
                 
                 RandomizeCustomStations();
             }
+
+            radioWheel->Hide();
         }
         else {
             randomizedOnPlayerDeadOrBusted = false;
         }
 
         if (CassettePlayer::IsNowActive()) {
-            AERadioTrackManager.StopRadio(NULL, 0);
-            MuteCustomStations();
+            DisableRadio();
+            radioWheel->Hide();
         }
 
         // Custom stations pause theirselves in their class
@@ -196,25 +261,50 @@ static class RadioSystem
                 CAEAudioHardware* hardw = &AEAudioHardware;
                 int trackId = plugin::CallMethodAndReturn<int, 0x4D8F80, CAEAudioHardware*>(hardw);
             }
-
-            //CHud::SetHelpMessage(std::to_string(trackId).c_str(), false, false, false);
         }
-
-        bool mouseWheelDown = Keys::GetKeyJustDown(rsMOUSEWHEELDOWNBUTTON + MOUSE_CUSTOM_OFFSET);
-        bool mouseWheelUp = Keys::GetKeyJustDown(rsMOUSEWHEELUPBUTTON + MOUSE_CUSTOM_OFFSET);
 
         int MaxRadioID = SA_Radio_Stations.size() + Custom_Radio_Stations.size();
 
 
+        bool currentRadioIsCustom = CurrentRadioId > SA_Radio_Stations.size();
+
+        bool showWheelRadioHudKeyDown = Keys::GetKeyDown(rsTAB);
+
         if (foundVehicle && CanRetuneRadioStation(playa, foundVehicle)) {
 
-            if (mouseWheelDown) 
+            if (showWheelRadioHudKeyDown && !CassettePlayer::IsNowActive()) {
+                radioWheel->Show(CurrentRadioId);
+            }
+            else {
+                radioWheel->Hide();
+            }
+
+            int CurrentRadioIndex = CurrentRadioId;
+
+            if (showWheelRadioHudKeyDown && !currentRadioIsCustom) {
+                CurrentRadioIndex = CurrentRadioId - 1;
+            }
+            else if (showWheelRadioHudKeyDown && currentRadioIsCustom) {
+                CurrentRadioIndex = CurrentRadioId - 14;
+            }
+
+            bool mouseWheelDown = Keys::GetKeyJustDown(rsMOUSEWHEELDOWNBUTTON + MOUSE_CUSTOM_OFFSET);
+            bool mouseWheelUp = Keys::GetKeyJustDown(rsMOUSEWHEELUPBUTTON + MOUSE_CUSTOM_OFFSET);
+
+            //if (showWheelRadioHudKeyDown && mouseWheelDown) {
+            //    RadioInfoVisual::wheelType = RadioInfoVisual::WheelType::Custom;
+            //}
+            //else if (showWheelRadioHudKeyDown && mouseWheelUp) {
+            //    RadioInfoVisual::wheelType = RadioInfoVisual::WheelType::Standard;
+            //}
+
+            if (!showWheelRadioHudKeyDown && mouseWheelDown)
             {
                 CurrentRadioId--;
                 if (CurrentRadioId < 1) CurrentRadioId = MaxRadioID;
                 isRadioStationChanged = true;
             }
-            else if (mouseWheelUp) 
+            else if (!showWheelRadioHudKeyDown && mouseWheelUp)
             {
                 CurrentRadioId++;
                 if (CurrentRadioId > MaxRadioID) CurrentRadioId = 1;
@@ -225,7 +315,8 @@ static class RadioSystem
             if (isRadioStationChanged) {
 
                 if (CassettePlayer::IsNowActive()) {
-                    CassettePlayer::PauseMusic();
+                    CassettePlayer::Hide();
+                    
                 }
 
                 isRadioStationChanged = false;
@@ -233,8 +324,11 @@ static class RadioSystem
                 StartRetuneRadio(CurrentRadioId);
             }
         }
+        else {
+            radioWheel->Hide();
+        }
 
-        if (STATE == "retuneRadio" && (!playaIsDriving || CTimer::m_snTimeInMilliseconds > retuneTime)) {
+        if (STATE == "retuneRadio" && (!playaIsDriving || CurrentTime() > retuneTime)) {
             InterfaceSounds::Stop("retuneloop");
             STATE = "none";
 
@@ -255,40 +349,58 @@ static class RadioSystem
 
         bool SA_radio_active = AERadioTrackManager.IsVehicleRadioActive();
 
-        if (CurrentRadioId > SA_Radio_Stations.size() && AudioEngine.GetCurrentRadioStationID() <= 13 && !customStationAfterReenteringVehicleBeenSet) {
+        if (currentRadioIsCustom && AudioEngine.GetCurrentRadioStationID() <= 13 && !customStationAfterReenteringVehicleBeenSet) {
             if (SA_radio_active) {
                 customStationAfterReenteringVehicleBeenSet = true;
                 StartRetuneRadio(CurrentRadioId);
             }
         }
 
-        if (CurrentRadioId < SA_Radio_Stations.size() && isReenteredVehicle && SA_radio_active) {
+        if (!currentRadioIsCustom && isReenteredVehicle && SA_radio_active && CanRetuneRadioStation(playa, foundVehicle)) {
             isReenteredVehicle = false;
             RadioInfoVisual::ShowWithAnimation(SA_Radio_Stations[CurrentRadioId - 1], "", "", SA_Radio_Stations[CurrentRadioId - 1], false);
         }
-        
     };
 
-    static void RetuneRadio(int id) {
-        CAEAudioHardware* hardw = &AEAudioHardware;
-        int trackId = plugin::CallMethodAndReturn<int, 0x4D8F80, CAEAudioHardware*>(hardw);
-        std::pair artistTrack = MusicTracksNames_SA::GetArtistAndNameByID(trackId);
-        SA_Radio_Current_ArtistTracks[PreviousRadioId] = artistTrack;
+    static void DisableRadio() {
+        AudioEngine.RetuneRadio(13);
+        AERadioTrackManager.StartRadio(13, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
 
-        if (id > 13) {
-            AudioEngine.RetuneRadio(13);
-            AERadioTrackManager.StartRadio(13, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
-            int indexCustom = id - 14;
-            UnmuteCustomStation(indexCustom);
+        AERadioTrackManager.StopRadio(NULL, 0);
+        MuteCustomStations();
+    }
+
+    static void RetuneRadio(int stationId) {
+
+        AERadioTrackManager.StopRadio(NULL, 0);
+        MuteCustomStations();
+
+        if (radioWheel) {
+            radioWheel->SyncWithSystem(stationId);
+        }
+
+        CurrentRadioId = stationId;
+
+        if (stationId == 13) { 
+            return;
+        }
+
+        if (stationId <= 12) { 
+            AERadioTrackManager.StartRadio(stationId,
+                AERadioTrackManager.m_Settings.m_nBassSet,
+                LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
+            AudioEngine.RetuneRadio(stationId);
         }
         else {
-            AERadioTrackManager.StartRadio(id, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
-            AudioEngine.RetuneRadio(id);
-
-            PreviousRadioId = id;
-        }
-
-        CurrentRadioId = id;
+            int customIndex = stationId - 14;
+            if (customIndex >= 0 && customIndex < Custom_Radio_Stations.size()) {
+                for (auto* station : Custom_Radio_Stations) {
+                    station->isTunedNow = false;
+                }
+                Custom_Radio_Stations[customIndex]->isTunedNow = true;
+                Custom_Radio_Stations[customIndex]->Unmute();
+            }
+        }  
     }
 
     static void StartRetuneRadio(char id) {
@@ -296,35 +408,36 @@ static class RadioSystem
         AERadioTrackManager.StopRadio(NULL, 0);
         MuteCustomStations();
 
-        InterfaceSounds::Play(radioInterfaceSoundsPath + "radioselect.mp3", "radioselect", false, true);
-        InterfaceSounds::Play(radioInterfaceSoundsPath + "retuneloop.mp3", "retuneloop", true, false);
+        InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "radioselect.mp3", "radioselect", false, true);
+        InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "retuneloop.mp3", "retuneloop", true, false);
 
         CVehicle* vehicle = FindPlayerVehicle(-1, false);
+        
+        bool canShowInfo = CanRetuneRadioStation(FindPlayerPed(), vehicle);
+
+        if (radioWheel) {
+            radioWheel->SyncWithSystem(id);
+        }
 
         if (id > 13) {
 
             int indexCustom = id - 14;
             std::pair artist_title = Custom_Radio_Stations[indexCustom]->TryGetArtistTitle();
 
-            RadioInfoVisual::ShowWithAnimation(Custom_Radio_Stations[indexCustom]->name, artist_title.first, artist_title.second, Custom_Radio_Stations[indexCustom]->name, true);
+            if(canShowInfo) RadioInfoVisual::ShowWithAnimation(Custom_Radio_Stations[indexCustom]->name, artist_title.first, artist_title.second, Custom_Radio_Stations[indexCustom]->name, true);
         }
         else {
 
             int index = id - 1;
 
-            AERadioTrackManager.StartRadio(id, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
-            AudioEngine.RetuneRadio(id);
-
             const std::string artist = SA_Radio_Current_ArtistTracks[id].first;
             const std::string track = SA_Radio_Current_ArtistTracks[id].second;
 
-            RadioInfoVisual::ShowWithAnimation(SA_Radio_Stations[index], artist, track, SA_Radio_Stations[index], false);
-
-            AERadioTrackManager.StopRadio(NULL, 0);
+            if(canShowInfo) RadioInfoVisual::ShowWithAnimation(SA_Radio_Stations[index], artist, track, SA_Radio_Stations[index], false);
         }
 
         STATE = "retuneRadio";
-        retuneTime = CTimer::m_snTimeInMilliseconds + 1000;
+        retuneTime = CurrentTime() + 1000;
         RetuneId = id;
     }
 
@@ -360,16 +473,16 @@ static class RadioSystem
                 float decreasedVolume = station->basicVolume * volumeDecreaseOnTalkMult;
 
                 if (talking) {
-                    lastTalkTime = CTimer::m_snTimeInMilliseconds;
+                    lastTalkTime = CurrentTime();
                     station->SetVolumeAllPlayers(decreasedVolume);
                     continue;
                 }
                 else {
-                    int talkTimeDiff = CTimer::m_snTimeInMilliseconds - lastTalkTime;
+                    int talkTimeDiff = CurrentTime() - lastTalkTime;
 
                     if (talkTimeDiff < 300) {
                         station->SetVolumeAllPlayers(decreasedVolume);
-                        talkFadeOutTime = CTimer::m_snTimeInMilliseconds;
+                        talkFadeOutTime = CurrentTime();
                         continue;
                     }
                     else if (talkTimeDiff >= 300 && talkTimeDiff < 1200) {
@@ -399,8 +512,11 @@ static class RadioSystem
     }
 
     static bool CanRetuneRadioStation(CPed* playa, CVehicle* vehicle) {
-        if (Command<Commands::IS_CHAR_DEAD>(playa) || Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa) || !Command<Commands::IS_CHAR_IN_ANY_CAR>(playa)) return false;
+        if (Command<Commands::IS_CHAR_DEAD>(playa) || 
+            Command<Commands::HAS_CHAR_BEEN_ARRESTED>(playa) || 
+            !Command<Commands::IS_CHAR_IN_ANY_CAR>(playa) ||
+            (playa->m_fHealth <= 0.0 && playa->m_fArmour <= 0.0)
+            ) return false;
         return (!(vehicle && vehicle->m_vehicleAudio.m_settings.m_nRadioType != RADIO_CIVILIAN));
     }
-
 };

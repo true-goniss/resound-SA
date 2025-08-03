@@ -22,7 +22,7 @@ class SoundPlayer
     DWORD bassChannel = NULL;
     HSTREAM stream = 0;
     bool randomizeTrackPosition = false;
-    unsigned int timeLastRewind = CTimer::m_snTimeInMilliseconds;
+    unsigned int timeLastRewind = CurrentTime();
     float freqInitVal = 44100.0f;
     float* channelFrequency = &freqInitVal;
 
@@ -377,9 +377,9 @@ public:
     void speedRewind() {
         if(rewindSpeed < 6.5f) rewindSpeed += 0.1;
 
-        if (CTimer::m_snTimeInMilliseconds < timeLastRewind + 300) return;
+        if (CurrentTime() < timeLastRewind + 300) return;
         
-        timeLastRewind = CTimer::m_snTimeInMilliseconds; 
+        timeLastRewind = CurrentTime();
 
         pauseTrack();
         rewindByASecond();

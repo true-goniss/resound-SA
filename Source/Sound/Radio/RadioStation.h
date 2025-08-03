@@ -7,12 +7,16 @@
 #include "../../Settings/SettingsRadioStation.h"
 #include "../../Animations/SoundFade.h"
 #include "../SoundPlayer.h"
+#include "../ResoundAudioEngine.h"
 
 class RadioStation
 {
     public:
 
     //TODO bug stop retune sound if not in radio car
+
+    //CSprite2d* icon = nullptr;
+    CSprite2d* icon_round = nullptr;
 
     SettingsRadioStation* settings;
     SoundPlayer* musicPlayer;
@@ -27,14 +31,15 @@ class RadioStation
     std::string timeState = "none";
     std::string previoustimeState = "";
 
-    float maxRadioVolume = 0.23f;
-    float basicVolume = maxRadioVolume;
+
+    float basicVolume = ResoundAudioEngine::GetMaxVolume();
 
     bool muted = false;
     bool forcePaused = false;
     bool timePlayed = false;
     bool timeOnIntroOrOutroFlag = false;
     bool timeNeedsToBePlayed = false;
+    bool isTunedNow = false;
 
     SoundFade* introAndOutroMusicFade = new SoundFade(true);
     float introFadeMinVolumeMult = 0.25f;
@@ -72,6 +77,11 @@ class RadioStation
         };
 
         //Mute();
+    }
+
+    int GetStationId() const {
+        static std::hash<std::string> hasher;
+        return static_cast<int>(hasher(name)) % 100000 + 14;
     }
 
     void InitPlayer(SoundPlayer*& player, const std::string& path, bool looped) {
@@ -187,15 +197,6 @@ class RadioStation
     }
 
     void AdjustVolumeValueFromSettings() {
-        unsigned char* radioVolume = reinterpret_cast<unsigned char*>(0xBA6798);
-
-        if (radioVolume != nullptr) {
-            unsigned int intValue = (*radioVolume) & 0x7F;
-            float volumeValue = Utils::Lerp(0.0f, maxRadioVolume, (float)intValue / 64.0f);
-            basicVolume = volumeValue;
-        }
-        else {
-            basicVolume = 0.0f;
-        }
+        basicVolume = ResoundAudioEngine::GetRadioVolumeSA();
     }
 };

@@ -17,7 +17,7 @@ public:
 	bool directionUp;
 
 	ShowFromDownAnimation() {
-		animationTime = CTimer::m_snTimeInMilliseconds;
+		animationTime = CurrentTime();
 		isAnimationNow = false;
 		directionUp = false;
 	}
@@ -42,7 +42,7 @@ public:
 
 		if (directionUp == _directionUp || isAnimationNow) return;
 
-		animationTime = CTimer::m_snTimeInMilliseconds;
+		animationTime = CurrentTime();
 		isAnimationNow = true;
 		directionUp = _directionUp;
 	}

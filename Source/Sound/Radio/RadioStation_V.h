@@ -69,7 +69,7 @@ public:
     int quanAdverts = 1;
 
     unsigned int outroPlayTime = 0;
-    unsigned int trackStartTime = CTimer::m_snTimeInMilliseconds;
+    unsigned int trackStartTime = CurrentTime();
 
     bool isDebugging = true;
 
@@ -489,7 +489,7 @@ public:
         introPassed = false;
 
         if (playIntro) {
-            trackStartTime = CTimer::m_snTimeInMilliseconds;
+            trackStartTime = CurrentTime();
             ChangeSTATE("playMusicTrack");
         }
     }
