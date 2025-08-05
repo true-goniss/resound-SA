@@ -4,7 +4,6 @@
 #include "plugin.h"
 #include <game_sa/CTimer.h>
 #include "extensions/ScriptCommands.h"
-#include "CHud.h"
 
 #include "Utils/Utils.h"
 #include "Sound/SoundPlayer.h"
@@ -78,10 +77,6 @@ protected:
                 PlayPreviousTrack();
             }
 
-            //if (KeyPressed(VK_F9)) {
-            //    CHud::SetHelpMessage(std::to_string(soundPlayer->getTrackState()).c_str(), false, false, false);
-            //}
-
             if ((KeyPressed(VK_END) && Utils::timePassedEnough(timeLastKeypress, 1200))) {
                 timeLastKeypress = CurrentTime();
 
@@ -120,7 +115,7 @@ protected:
                 
                 if (soundPlayer->getCurrentPositionSeconds() < 1) {
                     soundPlayer->speedNormal();
-                    //CHud::SetHelpMessage(std::to_string(soundPlayer->getCurrentPositionSeconds()).c_str(), false, false, false);
+
                     StopSoundTrackNoise();
                     StopSoundFastFwd();
                 }

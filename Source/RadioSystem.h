@@ -3,7 +3,6 @@
 #include "CAERadioTrackManager.h"
 #include "CAudioEngine.h";
 #include "plugin.h"
-//#include "CHud.h"
 
 #include "CassettePlayer.h"
 #include "Sound/Radio/RadioStation.h"

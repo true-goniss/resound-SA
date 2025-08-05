@@ -5,7 +5,6 @@
 */
 
 #include "CAudioEngine.h"
-#include "CHud.h"
 
 #include "RadioStation.h"
 #include "../SoundPlayer.h"
@@ -113,8 +112,6 @@ public:
 
                 if (Keys::GetKeyJustDown(rsF6)) {
                     if (muted) continue;
-
-                    CHud::SetHelpMessage(STATE.c_str(), false, false, false);
                 }
 
 
@@ -133,9 +130,6 @@ public:
 
             if (STATE_changed) {
                 STATE_changed = false;
-                //CHud::SetHelpMessage((folder + " s: " + STATE).c_str(), false, false, false);
-
-                
 
                 if (STATE == "playMusicTrack") {
 
@@ -234,14 +228,13 @@ public:
 
                             if (!Utils::DirectoryCheckRelative(to_path)) {
                                 ChangeSTATE("skippingOutro");
-                                CHud::SetHelpMessage(("skippingOutro1"), false, false, false);
+                                
                                 continue;
                             }
 
                             std::string to_newsRandomFile = Utils::tryFindRandomFileWithContainedName("NEWS", to_path);
 
                             //std::string pathExists = Utils::DirectoryCheckRelative(to_path) ? "true" : "false";
-                            CHud::SetHelpMessage(("to_newsRandomFile:"+to_newsRandomFile).c_str(), false, false, false);
 
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_newsRandomFile);
@@ -250,13 +243,10 @@ public:
 
                             if (!Utils::DirectoryCheckRelative(to_path)) {
                                 ChangeSTATE("skippingOutro");
-                                CHud::SetHelpMessage(("skippingOutro2"), false, false, false);
                                 continue;
                             }
 
                             std::string to_advertRandomFile = Utils::tryFindRandomFileWithContainedName("AD", to_path);
-
-                            CHud::SetHelpMessage(("to_advertRandomFile:"+to_advertRandomFile).c_str(), false, false, false);
 
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_advertRandomFile);
@@ -267,16 +257,12 @@ public:
 
                             std::string generalpathExists = Utils::DirectoryCheckRelative(to_path) ? "true" : "false";
 
-                            CHud::SetHelpMessage(("generalpathExists" + generalpathExists).c_str(), false, false, false);
-
                             if (!Utils::DirectoryCheckRelative(general_path) || skipOutro) {
                                 ChangeSTATE("skippingOutro");
-                                //CHud::SetHelpMessage(("skippingOutro3"), false, false, false);
                                 continue;
                             }
                             outroPlayer = new SoundPlayer(general_path);
                             outroPlayer->playNewTrack();
-                            CHud::SetHelpMessage(("playing general file:"), false, false, false);
                         }
                     }
 
