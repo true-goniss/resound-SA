@@ -17,6 +17,7 @@
 #include "../../Utils/Mouse.h"
 #include "../../Utils/Timer.h"
 #include "../../Utils/TimeDistorter.h"
+#include "../../Utils/HudController.h"
 
 #include "RadioWheelUtils.h"
 #include "RadioWheelFactories.h"
@@ -51,6 +52,12 @@ protected:
 		ResoundAudioEngine::ActivateSlowMoMode(SlowMoType::AUD_SLOWMO_RADIOWHEEL);
 		
 		Update(SCREEN_COORD(Mouse::currentMousePosition.x), SCREEN_COORD(Mouse::currentMousePosition.y));
+
+		CheckHudShown();
+	}
+
+	void CheckHudShown() {
+		HudController::SetHudShown(state_.isShowing);
 	}
 
 	void HandleHiding() {
@@ -63,6 +70,8 @@ protected:
 		if (tmrTuneRadio_.IsStarted()) {
 			ProcessSelectionConfirm(items_[state_.selectedIndex]);
 		}
+
+		CheckHudShown();
 	}
 
 	std::unique_ptr<IRadioWheelItemFactory> factory_;

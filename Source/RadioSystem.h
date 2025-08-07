@@ -131,7 +131,7 @@ static class RadioSystem
 
         std::unique_ptr<IRadioWheelItemFactory> factory;
 
-        switch (RadioWheel::WheelType::Custom) {
+        switch (RadioWheel::WheelType::Combined) {
         case RadioWheel::WheelType::Standard:
             factory = std::make_unique<StandardWheelFactory>();
             break;
