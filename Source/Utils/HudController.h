@@ -19,6 +19,7 @@ public:
         memcpy(originalDrawRadarMap, (void*)0x586880, 5);
         memcpy(originalDrawBlips, (void*)0x588050, 5);
         memcpy(originalDraw3dMarkers, (void*)0x585BF0, 5);
+        memcpy(originalPrintString, (void*)0x71A700, 16);
 
         // Saving the original circle draw call 
         memcpy(originalRadarCircleCall, (void*)0x58AA25, 5);
@@ -38,6 +39,7 @@ public:
             patch::SetRaw(0x586880, originalDrawRadarMap, 5);
             patch::SetRaw(0x588050, originalDrawBlips, 5);
             patch::SetRaw(0x585BF0, originalDraw3dMarkers, 5);
+            patch::SetRaw(0x71A700, originalPrintString, 16);
 
             patch::SetRaw(0x58A818, drawCircleNopArea1, 16);
             patch::SetRaw(0x58A8C2, drawCircleNopArea2, 16);
@@ -61,6 +63,10 @@ public:
             patch::SetRaw(0x588051, (uint8_t*)"\x90\x90\x90\x90", 4);
             patch::SetUChar(0x585BF0, 0xC3);
             patch::SetRaw(0x585BF1, (uint8_t*)"\x90\x90\x90\x90", 4);
+
+            //disable text prints
+            patch::SetUChar(0x71A700, 0xC3);
+            patch::SetRaw(0x71A701, (uint8_t*)"\x90\x90\x90\x90", 4);
 
             // Disable circle
             patch::RedirectCall(0x58AA25, EmptyRadarCircleFunction);
@@ -101,7 +107,7 @@ private:
     static inline uint8_t originalDrawBlips[5];
     static inline uint8_t originalDraw3dMarkers[5];
     static inline uint8_t originalRadarCircleCall[5];
-
+    static inline uint8_t originalPrintString[16];
 
     static inline uint8_t drawCircleNopArea1[16];
     static inline uint8_t drawCircleNopArea2[16];

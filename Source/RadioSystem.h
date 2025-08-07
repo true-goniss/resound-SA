@@ -25,6 +25,7 @@ using namespace plugin;
 static class RadioSystem
 {
     static inline RadioWheel* radioWheel = new RadioWheel();;
+    static inline bool gamePauseStatusChanged = false;
 
     public:
 
@@ -43,7 +44,21 @@ static class RadioSystem
             ManagePlayback();
         };
 
-        //Events::
+        Events::gameProcessEvent += [] {
+            if (!(CTimer::m_CodePause || CTimer::m_UserPause)) {
+
+                if (!gamePauseStatusChanged)
+                    gamePauseStatusChanged = true;
+                else
+                    return;
+
+                gamePauseStatusChanged = false;
+
+                if (GetCurrentRadioId() > 13) {
+                    MuteSA_Radio();
+                }
+            }
+        };
 
         std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
         soundFadeProcessThread.detach();
@@ -150,9 +165,6 @@ static class RadioSystem
         radioWheel->OnSelectionSelected = RadioWheelSelectionSelected;
     }
 
-
-
-
     static void RadioWheelSelectionChanged(const RadioWheelItem& item) {
         DisableRadio();
         InterfaceSounds::Stop("retuneloop");
@@ -209,26 +221,6 @@ static class RadioSystem
             DisableRadio();
             radioWheel->Hide();
         }
-
-        // Custom stations pause theirselves in their class
-        //static inline void PauseCustomStations() {
-        //    for (RadioStation* station : Custom_Radio_Stations) {
-        //        station->Pause();
-        //    }
-        //}
-
-        //static inline void UnpauseCustomStations() {
-        //    for (RadioStation* station : Custom_Radio_Stations) {
-        //        station->Unpause();
-        //    }
-        //}
-
-        //if (CTimer::m_UserPause) {
-        //    PauseCustomStations();
-        //}
-        //else {
-        //    UnpauseCustomStations();
-        //}
     }
 
     static inline void Event_SA_RetuneRadio() {
@@ -254,7 +246,6 @@ static class RadioSystem
 
         int MaxRadioID = SA_Radio_Stations.size() + Custom_Radio_Stations.size();
 
-
         bool currentRadioIsCustom = CurrentRadioId > SA_Radio_Stations.size();
 
         bool showWheelRadioHudKeyDown = Keys::GetKeyDown(rsTAB);
@@ -263,6 +254,7 @@ static class RadioSystem
 
             if (showWheelRadioHudKeyDown && !CassettePlayer::IsNowActive()) {
                 radioWheel->Show(CurrentRadioId);
+                CassettePlayer::Hide();
             }
             else {
                 radioWheel->Hide();
@@ -351,17 +343,22 @@ static class RadioSystem
         }
     };
 
-    static void DisableRadio() {
-        AudioEngine.RetuneRadio(13);
-        AERadioTrackManager.StartRadio(13, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
+    static void MuteSA_Radio() {
+        //AudioEngine.RetuneRadio(13);
+        //AERadioTrackManager.StartRadio(13, AERadioTrackManager.m_Settings.m_nBassSet, LOWORD(AERadioTrackManager.m_Settings.m_fBassGain), 0);
+        AERadioTrackManager.StopRadio(NULL, true);
+    }
 
-        AERadioTrackManager.StopRadio(NULL, 0);
+    static void DisableRadio() {
+        MuteSA_Radio();
+
+        //AERadioTrackManager.StopRadio(NULL, 0);
         MuteCustomStations();
     }
 
     static void RetuneRadio(int stationId) {
 
-        AERadioTrackManager.StopRadio(NULL, 0);
+        MuteSA_Radio();
         MuteCustomStations();
 
         if (radioWheel) {
@@ -394,7 +391,7 @@ static class RadioSystem
 
     static void StartRetuneRadio(char id) {
 
-        AERadioTrackManager.StopRadio(NULL, 0);
+        MuteSA_Radio();
         MuteCustomStations();
 
         InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "radioselect.mp3", "radioselect", false, true);
@@ -497,6 +494,7 @@ static class RadioSystem
     }
 
     static inline void UnmuteCustomStation(int index) {
+        MuteSA_Radio();
         Custom_Radio_Stations[index]->Unmute();
     }
 

@@ -32,7 +32,7 @@ public:
 
         InitFonts(fontArtist, fontTrack);
 
-        Events::initScriptsEvent += [] {
+        Events::initRwEvent += [] {
             Compatibility::InstallCompatibilityPatches();
             HudController::Init();
         };

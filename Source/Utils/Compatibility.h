@@ -5,6 +5,5 @@ public:
     static void PrintAreaName(float x, float y, char* text);
     static void PrintVehicleName(float x, float y, char* text);
     static void InstallCompatibilityPatches();
-    static void DisablePrintOffset();
-    static void EnablePrintOffset();
+    static void SetPrintOffsetX(bool enabled, float value);
 };

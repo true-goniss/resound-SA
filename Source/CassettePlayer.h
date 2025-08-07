@@ -30,6 +30,8 @@ static class CassettePlayer
 
         if (Keys::GetKeyJustDown(67)) {
 
+
+
             if (CurrentTime() - last_show_event_time < 800) return;
 
             if (CurrentTime() - last_show_keypressed < 700) {
@@ -38,15 +40,7 @@ static class CassettePlayer
 
                 showFromDownAnimation->Activate(show_direction);
 
-                switch (show_direction) {
-                case true:
-                    Compatibility::EnablePrintOffset();
-                    break;
-                case false:
-                    Compatibility::DisablePrintOffset();
-                    break;
-                }
-
+                Compatibility::SetPrintOffsetX(show_direction, -500);
             }
             else
             {
@@ -110,10 +104,6 @@ static class CassettePlayer
         initialized = true;
 
         cassPlayerMus->soundPlayer->showTrackInfoOnNewTrack = true;
-
-        Events::processScriptsEvent += [] {
-
-        };
 
         Events::drawingEvent += [] {
 
