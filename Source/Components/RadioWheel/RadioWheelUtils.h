@@ -30,7 +30,7 @@ float CalculateCircleRadius(float iconSize, float spacing, int quantity) {
 int GetSelectedSectorCircular(
 	float mouseX, float mouseY, float centerX, float centerY, float radius,
 	int numIcons, float& lastMouseAngle, int selectedIndex, float startAngleDegrees = 270.0f,
-	float angleThreshold = 15.0f) {
+	float angleThreshold = 5.0f) {
 
 	if (numIcons <= 0) return 0; // Invalid input
 
