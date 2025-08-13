@@ -25,7 +25,6 @@ using namespace plugin;
 static class RadioSystem
 {
     static inline RadioWheel* radioWheel = new RadioWheel();;
-    static inline bool gamePauseStatusChanged = false;
 
     public:
 
@@ -44,21 +43,14 @@ static class RadioSystem
             ManagePlayback();
         };
 
-        Events::gameProcessEvent += [] {
-            if (!(CTimer::m_CodePause || CTimer::m_UserPause)) {
+        GamePausedWatcher::AddHandler([](GamePausedWatcher::EventType eventType) {
 
-                if (!gamePauseStatusChanged)
-                    gamePauseStatusChanged = true;
-                else
-                    return;
-
-                gamePauseStatusChanged = false;
-
-                if (GetCurrentRadioId() > 13) {
+            if (eventType == GamePausedWatcher::EventType::Paused)
+            {
+                if (GetCurrentRadioId() > 13)
                     MuteSA_Radio();
-                }
             }
-        };
+        });
 
         std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
         soundFadeProcessThread.detach();

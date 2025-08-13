@@ -12,9 +12,13 @@ class HudController {
 
     static inline BYTE* hudDrawAddr1 = nullptr;
     static inline BYTE* hudDrawAddr2 = nullptr;
+    static inline bool init = false;
 
 public:
     static void Init() {
+        if (init) return;
+        init = true;
+
         // Saving original draw functions bytes
         memcpy(originalDrawRadarMap, (void*)0x586880, 5);
         memcpy(originalDrawBlips, (void*)0x588050, 5);

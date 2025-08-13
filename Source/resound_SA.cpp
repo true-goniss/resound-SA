@@ -48,6 +48,7 @@ public:
                 Fonts::fTrack = fontTrack;
                 CassettePlayer::Initialize();
                 ResoundAudioEngine::Initialize();
+                GamePausedWatcher::Initialize();
                 RadioSystem::Initialize();
             }
 

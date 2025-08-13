@@ -51,26 +51,17 @@ class RadioStation
         this->name = folder;
         this->path = "resound\\radio\\" + folder;// + "\\";
 
-        Events::onPauseAllSounds += [this] {
-            Pause();
-        };
-
-        Events::onResumeAllSounds += [this] {
-            Unpause();
-        };
-
-        Events::drawMenuBackgroundEvent += [this] {
-            Pause();
-        };
-
-        Events::gameProcessEvent += [this] {
-            if (!(CTimer::m_CodePause || CTimer::m_UserPause)) {
-                Unpause();
+        GamePausedWatcher::AddHandler([this](GamePausedWatcher::EventType eventType) {
+            switch (eventType)
+            {
+                case GamePausedWatcher::EventType::Paused:
+                    this->Pause();
+                    break;
+                case GamePausedWatcher::EventType::Unpaused:
+                    this->Unpause();
+                    break;
             }
-            else {
-                Pause();
-            }
-        };
+        });
 
         Events::reInitGameEvent += [this] {
             Randomize();

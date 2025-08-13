@@ -22,6 +22,8 @@ class CassettePlayer_Music
 
     float basicVolume = 0.23f;
     float fastfwdVolume = 0.1f;
+    
+    bool pausedByGame = false;
 
 public:
 
@@ -38,6 +40,29 @@ public:
             AdjustVolumeValueFromSettings();
             soundPlayer->setVolume(basicVolume);
         };
+
+        GamePausedWatcher::AddHandler([this](GamePausedWatcher::EventType eventType) {
+            switch (eventType)
+            {
+                case GamePausedWatcher::EventType::Paused:
+
+                    if (soundPlayer->isPlayingOrActive()) {
+                        PauseTrack(false);
+                        pausedByGame = true;
+                    }
+
+                    break;
+
+                case GamePausedWatcher::EventType::Unpaused:
+
+                    if (pausedByGame) {
+                        pausedByGame = false;
+                        PlayContinueTrack(false);
+                    }
+                        
+                    break;
+                }
+        });
     }
 
     void PauseTrack(bool playSoundClick) {
@@ -48,6 +73,12 @@ public:
 
         StopSoundTrackNoise();
         if(playSoundClick) PlaySoundClick();
+    }
+
+    void PlayContinueTrack(bool playClick = true) {
+        PlaySoundTrackNoise(playClick);
+        CassetteInterfaceTextures::SetTexture("play");
+        soundPlayer->playContinueTrack();
     }
 
 protected:
@@ -177,12 +208,6 @@ protected:
         }
     }
 
-    void PlayContinueTrack() {
-        PlaySoundTrackNoise();
-        CassetteInterfaceTextures::SetTexture("play");
-        soundPlayer->playContinueTrack();
-    }
-
     void SetTrackSpeedRewind() {
         CassetteInterfaceTextures::textureCurrent = "rewind";
 
@@ -286,8 +311,10 @@ protected:
         InterfaceSounds::Play(interfaceSoundPath + "openeject.mp3", "openeject", false, true);
     }
 
-    void PlaySoundTrackNoise() {
-        InterfaceSounds::Play(interfaceSoundPath + "firstplay.mp3", "firstplay", false, true);
+    void PlaySoundTrackNoise(bool playClick = true) {
+        if(playClick)
+            InterfaceSounds::Play(interfaceSoundPath + "firstplay.mp3", "firstplay", false, true);
+
         InterfaceSounds::Play(interfaceSoundPath + "tapenoiseloop.mp3", "tapenoiseloop", true, false);
         InterfaceSounds::Play(interfaceSoundPath + "motorloop.mp3", "motorloop", true, false);
     }
