@@ -5,7 +5,6 @@
 */
 
 #include "CAudioEngine.h"
-
 #include "RadioStation.h"
 #include "../SoundPlayer.h"
 #include "../../Animations/SoundFade.h"
@@ -13,11 +12,26 @@
 
 using namespace std;
 
+enum class RadioState {
+    None,
+    PlayMusicTrack,
+    TrackMid,
+    WaitingForOutro,
+    SkippingOutro,
+    PlayingIntro,
+    MusicTrackEnded,
+    PlayAdvert,
+    AdvertEnded,
+    PlayID,
+    PlaySolo,
+    PlayNews,
+    PlayingOutro,
+    OutroEnded
+};
+
 class RadioStation_V : public RadioStation
 {
-
 public:
-
     RadioStation_V(std::string folder, SettingsRadioStation* settings) : RadioStation(folder, settings) {
 
         InitPlayer(this->musicPlayer, this->path, false);
@@ -31,8 +45,6 @@ public:
 
         std::thread managePlaybackThread(&RadioStation_V::ManagePlayback, this);
         managePlaybackThread.detach();
-
-
     }
 
     std::pair<std::string, std::string> TryGetArtistTitle() const override {
@@ -44,8 +56,6 @@ public:
         }
     }
 
-
-
     std::string adverts_path = "resound\\radio_adverts\\adverts_v\\";
     std::string news_path = "resound\\radio_news\\news_v\\";
     std::string to_path = this->path + "\\to\\";
@@ -55,7 +65,8 @@ public:
     std::string general_path = this->path + "\\general\\";
     std::string time_path = this->path + "\\time\\";
 
-    std::string STATE = "none";
+    RadioState currentState = RadioState::None;
+    bool stateChanged = false;
 
     int countAdverts = 0;
     int countMusicTracks = 0;
@@ -103,7 +114,6 @@ public:
 
                     if (isAdvertNow) {
                         advertsPlayer->pauseTrack();
-
                     }
                     else {
                         musicPlayer->pauseTrack();
@@ -114,10 +124,8 @@ public:
                     if (muted) continue;
                 }
 
-
                 if (Keys::GetKeyJustDown(rsF7)) {
                     if (muted) continue;
-
                     musicPlayer->setPositionPercent(93);
                 }
             }
@@ -128,137 +136,105 @@ public:
 
             int trackPosMs = musicPlayer->getTrackPositionMs();
 
-            if (STATE_changed) {
-                STATE_changed = false;
+            if (stateChanged) {
+                stateChanged = false;
 
-                if (STATE == "playMusicTrack") {
+                if (currentState == RadioState::PlayMusicTrack) {
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(introFadeStartMs - introFadeLengthMs));
 
                     bool skipIntro = Utils::getRandomBoolWithProbability(0.37f);
 
                     if (skipIntro) {
-                        //std::this_thread::sleep_for(std::chrono::milliseconds((introFadeStartMaxMs - trackPosMs) + 2000));
-                        ChangeSTATE("trackMid");
+                        ChangeState(RadioState::TrackMid);
                         continue;
                     }
                     else {
-
                         if (isMorningTime() && !morningTimePlayed) {
-
                             introAndOutroMusicFade->Activate();
                             std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
                             PlayTime(introPlayer);
 
                             morningTimePlayed = true;
                             eveningTimePlayed = false;
-
                         }
                         else if (isEveningTime() && !eveningTimePlayed) {
-
                             introAndOutroMusicFade->Activate();
                             std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
                             PlayTime(introPlayer);
 
                             morningTimePlayed = false;
                             eveningTimePlayed = true;
-
                         }
                         else {
-
-                            trackname = Utils::tryFindRandomFileWithContainedName(trackname, intro_path);                            
+                            trackname = Utils::tryFindRandomFileWithContainedName(trackname, intro_path);
 
                             if (trackname == "") {
                                 introAndOutroMusicFade->Activate();
-
                                 introPlayer = new SoundPlayer(general_path); // TODO if no general continue
                                 std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
                                 introPlayer->playNewTrack();
                             }
                             else {
                                 introAndOutroMusicFade->Activate();
-
                                 introPlayer = new SoundPlayer(intro_path);
                                 std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
                                 introPlayer->playTrackBASS(trackname);
                             }
-
                         }
 
                         if (introPlayer->isEmpty) {
-
-                            ChangeSTATE("trackMid");
+                            ChangeState(RadioState::TrackMid);
                             continue;
                         }
 
                         CheckVolumeOnPlay(introPlayer);
-
-                        ChangeSTATE("playingIntro");
-
+                        ChangeState(RadioState::PlayingIntro);
                         wholeIntroFadeLength = introPlayer->getTrackLengthMs();
-
                         std::this_thread::sleep_for(std::chrono::milliseconds(wholeIntroFadeLength));
-
-                        ChangeSTATE("trackMid");
+                        ChangeState(RadioState::TrackMid);
                         continue;
                     }
                 }
 
-                if (STATE == "trackMid") {
-
+                if (currentState == RadioState::TrackMid) {
                     if (isMorningTime() && !morningTimePlayed) {
-
                         PlayTime(outroPlayer);
-
                         morningTimePlayed = true;
                         eveningTimePlayed = false;
                     }
                     else if (isEveningTime() && !eveningTimePlayed) {
-
                         PlayTime(outroPlayer);
-
                         morningTimePlayed = false;
                         eveningTimePlayed = true;
                     }
                     else {
-
-                        ChangeSTATE("waitingForOutro");
+                        ChangeState(RadioState::WaitingForOutro);
 
                         if (countMusicTracksForNews >= quanTracksBeforeNews) {
-
                             if (!Utils::DirectoryCheckRelative(to_path)) {
-                                ChangeSTATE("skippingOutro");
-                                
+                                ChangeState(RadioState::SkippingOutro);
                                 continue;
                             }
 
                             std::string to_newsRandomFile = Utils::tryFindRandomFileWithContainedName("NEWS", to_path);
-
-                            //std::string pathExists = Utils::DirectoryCheckRelative(to_path) ? "true" : "false";
-
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_newsRandomFile);
                         }
                         else if (countMusicTracks >= quanTracksBeforeAdverts) {
-
                             if (!Utils::DirectoryCheckRelative(to_path)) {
-                                ChangeSTATE("skippingOutro");
+                                ChangeState(RadioState::SkippingOutro);
                                 continue;
                             }
 
                             std::string to_advertRandomFile = Utils::tryFindRandomFileWithContainedName("AD", to_path);
-
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_advertRandomFile);
                         }
                         else {
-
-                            bool skipOutro = false;// Utils::getRandomBoolWithProbability(0.27f);
-
-                            std::string generalpathExists = Utils::DirectoryCheckRelative(to_path) ? "true" : "false";
-
+                            bool skipOutro = false;
                             if (!Utils::DirectoryCheckRelative(general_path) || skipOutro) {
-                                ChangeSTATE("skippingOutro");
+                                ChangeState(RadioState::SkippingOutro);
                                 continue;
                             }
                             outroPlayer = new SoundPlayer(general_path);
@@ -269,31 +245,26 @@ public:
                     outroPlayer->pauseTrack();
                     wholeIntroFadeLength = outroPlayer->getTrackLengthMs() + introFadeLengthMs;
                     outroPlayTime = musicPlayer->getTrackLengthMs() - 4000 - outroPlayer->getTrackLengthMs();
-
-
                 }
 
-                if (STATE == "musicTrackEnded") {
-
+                if (currentState == RadioState::MusicTrackEnded) {
                     if (countMusicTracksForNews >= quanTracksBeforeNews) {
                         countMusicTracksForNews = 0;
                         newsPlayed = false;
-                        ChangeSTATE("playNews");
+                        ChangeState(RadioState::PlayNews);
                         continue;
                     }
                     else {
                         if (countMusicTracks >= quanTracksBeforeAdverts) {
-                            ChangeSTATE("playAdvert");
+                            ChangeState(RadioState::PlayAdvert);
                             continue;
                         }
                         else {
                             bool playSolo = Utils::getRandomBoolWithProbability(0.2f);
-
-                            if (playSolo)
-                            {
+                            if (playSolo) {
                                 isMusicTrackNow = false;
                                 isAdvertNow = false;
-                                ChangeSTATE("playSolo");
+                                ChangeState(RadioState::PlaySolo);
                                 soloPlayer->playNewTrack();
                                 CheckVolumeOnPlay(soloPlayer);
                                 continue;
@@ -306,7 +277,7 @@ public:
                     }
                 }
 
-                if (STATE == "playAdvert") {
+                if (currentState == RadioState::PlayAdvert) {
                     outro_to_adverts = false;
 
                     if (musicPlayer->isPlayingOrActive()) {
@@ -314,34 +285,31 @@ public:
                         musicPlayer->eraseChannel();
                     }
 
-
                     isMusicTrackNow = false;
                     isAdvertNow = true;
-
                     advertsPlayer->playNewTrack();
                     CheckVolumeOnPlay(advertsPlayer);
                     countAdverts++;
                     continue;
                 }
 
-                if (STATE == "advertEnded") {
+                if (currentState == RadioState::AdvertEnded) {
                     if (countAdverts <= quanAdverts) {
-                        ChangeSTATE("playAdvert");
+                        ChangeState(RadioState::PlayAdvert);
                         continue;
                     }
                     else {
                         countMusicTracks = 0;
                         quanTracksBeforeAdverts = Utils::getRandomIntWithDifferentProbabilities(quanTracksBeforeAdvertsProbabilities);
-                        UpdateQuanAdverts();           
-                        ChangeSTATE("playID");
+                        UpdateQuanAdverts();
+                        ChangeState(RadioState::PlayID);
                         continue;
                     }
                 }
 
-                if (STATE == "playID") {
+                if (currentState == RadioState::PlayID) {
                     isMusicTrackNow = false;
                     isAdvertNow = false;
-
                     idPlayer->playNewTrack();
                     CheckVolumeOnPlay(idPlayer);
                     continue;
@@ -350,96 +318,67 @@ public:
                 continue;
             }
 
-            if (STATE == "playNews" && !newsPlayer->isPlayingOrActive()) {
-
+            if (currentState == RadioState::PlayNews && !newsPlayer->isPlayingOrActive()) {
                 if (!newsPlayed) {
                     PlayNews();
                     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
                 }
                 else {
-                    ChangeSTATE("playID");
+                    ChangeState(RadioState::PlayID);
                 }
-
             }
 
-            if (trackPosMs > (outroPlayTime - introFadeLengthMs) && STATE == "waitingForOutro") {
-
-                ChangeSTATE("playingOutro");
-
+            if (trackPosMs > (outroPlayTime - introFadeLengthMs) && currentState == RadioState::WaitingForOutro) {
+                ChangeState(RadioState::PlayingOutro);
                 introAndOutroMusicFade->Activate();
-
                 std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-
                 outroPlayer->playContinueTrack();
                 CheckVolumeOnPlay(outroPlayer);
             }
 
-            //if (STATE == "playingOutro" && trackPosMs > (outroPlayTime + outroPlayer->getTrackLengthMs())) {
-            //    ChangeSTATE("outroEnded");
-            //}
-
-
             if (!musicPlayer->isPlayingOrActive() && isMusicTrackNow) {
-                ChangeSTATE("musicTrackEnded");
+                ChangeState(RadioState::MusicTrackEnded);
                 isMusicTrackNow = false;
                 continue;
             }
 
-            if (STATE == "playAdvert" && !advertsPlayer->isPlayingOrActive()) {
+            if (currentState == RadioState::PlayAdvert && !advertsPlayer->isPlayingOrActive()) {
                 musicPlayer->eraseChannel();
-                ChangeSTATE("advertEnded");
+                ChangeState(RadioState::AdvertEnded);
                 continue;
             }
 
-            if (STATE == "playID" && !idPlayer->isPlayingOrActive()) {
+            if (currentState == RadioState::PlayID && !idPlayer->isPlayingOrActive()) {
                 musicPlayer->eraseChannel();
-                ChangeSTATE("musicTrackEnded");
+                ChangeState(RadioState::MusicTrackEnded);
                 continue;
             }
 
-            if (STATE == "playSolo" && !soloPlayer->isPlayingOrActive()) {
+            if (currentState == RadioState::PlaySolo && !soloPlayer->isPlayingOrActive()) {
                 musicPlayer->eraseChannel();
-                ChangeSTATE("musicTrackEnded");
+                ChangeState(RadioState::MusicTrackEnded);
                 continue;
             }
         }
     }
 
-    void Pause() override {
-        RadioStation::Pause();
-    }
-
-    void Unpause() override {
-        RadioStation::Unpause();
-    }
+    void Pause() override { RadioStation::Pause(); }
+    void Unpause() override { RadioStation::Unpause(); }
 
     void Randomize() override {
         timeState = "none";
         previoustimeState = "";
         timePlayed = false;
         timeNeedsToBePlayed = false;
-
-        //TODO reset timespeeches every day
-
         timeSpeeches = "";
-
         Stop();
-        // TODO randomize between advert or track
         PlayMusicTrack();
         RadioStation::Randomize();
     }
 
-    void Mute() override {
-        RadioStation::Mute();
-    }
-
-    void Unmute() override {
-        RadioStation::Unmute();
-    }
-
-    void Stop() override {
-        RadioStation::Stop();
-    }
+    void Mute() override { RadioStation::Mute(); }
+    void Unmute() override { RadioStation::Unmute(); }
+    void Stop() override { RadioStation::Stop(); }
 
     int quanTracksBeforeAdverts = Utils::getRandomIntWithDifferentProbabilities(quanTracksBeforeAdvertsProbabilities);
 
@@ -456,32 +395,24 @@ public:
     }
 
     bool outroNotFound = false;
-
-
-
-    bool STATE_changed = false;
     bool eveningTimePlayed = false;
     bool morningTimePlayed = false;
 
-    void ChangeSTATE(const std::string& state) {
-        STATE = state;
-        STATE_changed = true;
+    void ChangeState(RadioState newState) {
+        currentState = newState;
+        stateChanged = true;
     }
 
     void PlayMusicTrack(const bool playIntro) {
-
         PlayMusicTrack();
-
         introPassed = false;
-
         if (playIntro) {
             trackStartTime = CurrentTime();
-            ChangeSTATE("playMusicTrack");
+            ChangeState(RadioState::PlayMusicTrack);
         }
     }
 
     void PlayTime(SoundPlayer*& player) {
-
         std::string thisTime = "";
         std::string timeFile = "";
 
@@ -496,7 +427,6 @@ public:
         }
 
         timeSpeeches += thisTime;
-
         if (timeFile == "") {
             outroNotFound = true;
             return;
@@ -518,7 +448,7 @@ public:
     void PlaySolo() {
         isMusicTrackNow = false;
         isAdvertNow = false;
-        ChangeSTATE("playSolo");
+        ChangeState(RadioState::PlaySolo);
         soloPlayer->playNewTrack();
         CheckVolumeOnPlay(soloPlayer);
     }
@@ -526,17 +456,14 @@ public:
     void PlayID() {
         isMusicTrackNow = false;
         isAdvertNow = false;
-
         idPlayer->playNewTrack();
         CheckVolumeOnPlay(idPlayer);
     }
 
     void PlayNews() {
         newsPlayed = true;
-
         isMusicTrackNow = false;
         isAdvertNow = false;
-
         newsPlayer->playNewTrack();
         CheckVolumeOnPlay(newsPlayer);
     }
