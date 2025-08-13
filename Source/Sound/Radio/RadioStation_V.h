@@ -31,6 +31,25 @@ enum class RadioState {
 
 class RadioStation_V : public RadioStation
 {
+private:
+
+    const std::string KEYWORD_NEWS = "NEWS";
+    const std::string KEYWORD_AD = "AD";
+    const std::string KEYWORD_EVENING = "EVENING";
+    const std::string KEYWORD_MORNING = "MORNING";
+
+
+    const int SLEEP_MAIN_LOOP_MS = 100;
+    const int DEBUG_JUMP_PERCENT = 93;
+    const float INTRO_SKIP_PROBABILITY = 0.37f;
+    const float SOLO_PLAY_PROBABILITY = 0.2f;
+    const int SLEEP_AFTER_NEWS_MS = 1000;
+    const int MUSIC_FADE_OUT_OFFSET = 4000;
+    const int EVENING_START_HOUR = 19;
+    const int EVENING_END_HOUR = 23;
+    const int MORNING_START_HOUR = 5;
+    const int MORNING_END_HOUR = 9;
+
 public:
     RadioStation_V(std::string folder, SettingsRadioStation* settings) : RadioStation(folder, settings) {
 
@@ -105,7 +124,7 @@ public:
 
         while (true) {
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_MAIN_LOOP_MS));
 
             if (isDebugging) {
 
@@ -126,7 +145,7 @@ public:
 
                 if (Keys::GetKeyJustDown(rsF7)) {
                     if (muted) continue;
-                    musicPlayer->setPositionPercent(93);
+                    musicPlayer->setPositionPercent(DEBUG_JUMP_PERCENT);
                 }
             }
 
@@ -143,7 +162,7 @@ public:
 
                     std::this_thread::sleep_for(std::chrono::milliseconds(introFadeStartMs - introFadeLengthMs));
 
-                    bool skipIntro = Utils::getRandomBoolWithProbability(0.37f);
+                    bool skipIntro = Utils::getRandomBoolWithProbability(INTRO_SKIP_PROBABILITY);
 
                     if (skipIntro) {
                         ChangeState(RadioState::TrackMid);
@@ -217,7 +236,7 @@ public:
                                 continue;
                             }
 
-                            std::string to_newsRandomFile = Utils::tryFindRandomFileWithContainedName("NEWS", to_path);
+                            std::string to_newsRandomFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_NEWS, to_path);
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_newsRandomFile);
                         }
@@ -227,7 +246,7 @@ public:
                                 continue;
                             }
 
-                            std::string to_advertRandomFile = Utils::tryFindRandomFileWithContainedName("AD", to_path);
+                            std::string to_advertRandomFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_AD, to_path);
                             outroPlayer = new SoundPlayer(to_path);
                             outroPlayer->playTrackBASS(to_advertRandomFile);
                         }
@@ -244,7 +263,7 @@ public:
 
                     outroPlayer->pauseTrack();
                     wholeIntroFadeLength = outroPlayer->getTrackLengthMs() + introFadeLengthMs;
-                    outroPlayTime = musicPlayer->getTrackLengthMs() - 4000 - outroPlayer->getTrackLengthMs();
+                    outroPlayTime = musicPlayer->getTrackLengthMs() - MUSIC_FADE_OUT_OFFSET - outroPlayer->getTrackLengthMs();
                 }
 
                 if (currentState == RadioState::MusicTrackEnded) {
@@ -260,7 +279,7 @@ public:
                             continue;
                         }
                         else {
-                            bool playSolo = Utils::getRandomBoolWithProbability(0.2f);
+                            bool playSolo = Utils::getRandomBoolWithProbability(SOLO_PLAY_PROBABILITY);
                             if (playSolo) {
                                 isMusicTrackNow = false;
                                 isAdvertNow = false;
@@ -321,7 +340,7 @@ public:
             if (currentState == RadioState::PlayNews && !newsPlayer->isPlayingOrActive()) {
                 if (!newsPlayed) {
                     PlayNews();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                    std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_AFTER_NEWS_MS));
                 }
                 else {
                     ChangeState(RadioState::PlayID);
@@ -387,11 +406,13 @@ public:
     }
 
     bool isEveningTime() {
-        return (Utils::GameHours() > 19 && Utils::GameHours() < 23);
+        int hour = Utils::GameHours();
+        return hour > EVENING_START_HOUR && hour < EVENING_END_HOUR;
     }
 
     bool isMorningTime() {
-        return (Utils::GameHours() > 5 && Utils::GameHours() < 9);
+        int hour = Utils::GameHours();
+        return hour > MORNING_START_HOUR && hour < MORNING_END_HOUR;
     }
 
     bool outroNotFound = false;
@@ -418,12 +439,12 @@ public:
 
         if (isEveningTime()) {
             thisTime = "EVENING" + std::to_string(Utils::GameDays()) + ";";
-            timeFile = Utils::tryFindRandomFileWithContainedName("EVENING", time_path);
+            timeFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_EVENING, time_path);
         }
 
         if (isMorningTime()) {
             thisTime = "MORNING" + std::to_string(Utils::GameDays()) + ";";
-            timeFile = Utils::tryFindRandomFileWithContainedName("MORNING", time_path);
+            timeFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_MORNING, time_path);
         }
 
         timeSpeeches += thisTime;
