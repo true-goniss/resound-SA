@@ -11,6 +11,7 @@
 #include "Sound/Radio/RadioStation_V_Talk.h"
 #include "Sound/Radio/RadioStation_ConsistentlyPlayed.h"
 
+#include "Utils/GamePausedWatcher.h"
 
 #include "Settings/Settings.h"
 #include "Sound/Radio/Utils/MusicTracksNames_SA.h"

@@ -6,6 +6,8 @@
 #include "extensions/ScriptCommands.h"
 
 #include "Utils/Utils.h"
+#include "Utils/GamePausedWatcher.h"
+
 #include "Sound/SoundPlayer.h"
 #include "Sound/InterfaceSounds.h"
 #include "Visual/Textures/CassettePlayer/CassetteInterfaceTextures.h"

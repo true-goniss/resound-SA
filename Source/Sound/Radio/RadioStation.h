@@ -8,6 +8,7 @@
 #include "../../Animations/SoundFade.h"
 #include "../SoundPlayer.h"
 #include "../ResoundAudioEngine.h"
+#include "../../Utils/GamePausedWatcher.h"
 
 class RadioStation
 {
