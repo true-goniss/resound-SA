@@ -163,6 +163,10 @@ public:
 		};
 	}
 
+	void GeometryUpdate() {
+		state_.needGeometryUpdate = true;
+	}
+
 	void SyncWithSystem(int currentId) {
 		SetSelectedStation(currentId);
 		lastKnownRadioId = currentId;

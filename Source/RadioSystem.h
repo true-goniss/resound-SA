@@ -44,6 +44,9 @@ static class RadioSystem
             ManagePlayback();
         };
 
+        std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
+        soundFadeProcessThread.detach();
+
         GamePausedWatcher::AddHandler([](GamePausedWatcher::EventType eventType) {
 
             if (eventType == GamePausedWatcher::EventType::Paused)
@@ -51,10 +54,11 @@ static class RadioSystem
                 if (GetCurrentRadioId() > 13)
                     MuteSA_Radio();
             }
-        });
 
-        std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
-        soundFadeProcessThread.detach();
+            if (eventType == GamePausedWatcher::EventType::Unpaused) {
+                radioWheel->GeometryUpdate();
+            }
+        });
 
         InitializeRadioStations();
     }
