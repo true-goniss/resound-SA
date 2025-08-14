@@ -39,6 +39,7 @@ Insert: previous track
 
 
 ## Screenshots
-![image](https://github.com/user-attachments/assets/2ee8acf4-1efa-4df8-8da4-3c890544bed9)
-![image](https://github.com/user-attachments/assets/11ee8d5a-9e59-4210-843b-04059fed19d3)
+![image](https://github.com/user-attachments/assets/f8cf2fc4-3bc2-4c8e-a2f0-008d21ae82df)
+![image](https://github.com/user-attachments/assets/585c6094-8f0b-43ed-876c-ee5eeefb8132)
+![image](https://github.com/user-attachments/assets/6ca5b639-9693-4ad2-990d-40394633d09d)
 ![image](https://github.com/user-attachments/assets/e4688e30-bf0f-4405-aaa6-37af2dc13f49)
