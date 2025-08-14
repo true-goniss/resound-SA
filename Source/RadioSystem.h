@@ -164,7 +164,7 @@ static class RadioSystem
 
     static void RadioWheelSelectionChanged(const RadioWheelItem& item) {
         DisableRadio();
-        InterfaceSounds::Stop("retuneloop");
+
         InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "retuneloop.mp3", "retuneloop", true, false);
         InterfaceSounds::Play(InterfaceSounds::radioInterfaceSoundsPath + "radioselect.mp3", "radioselect", false, true);
 
