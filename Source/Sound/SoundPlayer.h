@@ -42,18 +42,20 @@ public:
     bool isRewindNow = false;
     float rewindSpeed = 1.0f;
 
-    SoundPlayer(std::string folder) {
-        if (folder == "" || !Utils::DirectoryCheckRelative(folder)) { isEmpty = true; return; }
-
-        this->folder = Utils::GetCurrentDirectory() + "\\" + folder;
-    }
+    // Usual soundplayer constructor, not looped by default
+    SoundPlayer(std::string folder) : SoundPlayer(folder, false) {}
 
     SoundPlayer(std::string folder, bool looped) {
-        if (folder == "" || !Utils::DirectoryCheckRelative(folder)) { isEmpty = true; return; }
+        if (folder == "" || !Utils::DirectoryCheckRelative(folder)) {
+            isEmpty = true;
+            return;
+        }
 
         this->folder = Utils::GetCurrentDirectory() + "\\" + folder;
         this->looped = looped;
     }
+
+
 
     std::vector<string> playedTracksNames;
     int indexOfPlayingTrack = 999999;
