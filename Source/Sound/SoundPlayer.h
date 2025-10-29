@@ -17,7 +17,7 @@ using namespace std;
 class SoundPlayer
 {
 
-    std::function<void(std::string)> onNewTrackPlayedCallback = nullptr;
+    std::function<void(const std::string&)> onNewTrackPlayedCallback = nullptr;
 
     bool initializedBASS = false;
     bool looped = false;
@@ -118,7 +118,7 @@ public:
         }
     }
 
-    void setOnNewTrackPlayed(std::function<void(std::string)> callback) {
+    void setOnNewTrackPlayed(std::function<void(const std::string&)> callback) {
         onNewTrackPlayedCallback = callback;
     }
 

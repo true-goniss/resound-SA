@@ -104,9 +104,9 @@ static class CassettePlayer
         initialized = true;
 
         cassPlayerMus->soundPlayer->setOnNewTrackPlayed(
-            [](std::string musicfile) {
+            [](const std::string& musicfile) {
 
-                std::string rawFilename = Utils::remove_music_extension(musicfile);
+                const std::string& rawFilename = Utils::remove_music_extension(musicfile);
                 std::pair artistAndName = Utils::GetTrackArtistAndName(rawFilename);
 
                 TrackInfoVisual::ShowWithAnimation(artistAndName.first, artistAndName.second);
