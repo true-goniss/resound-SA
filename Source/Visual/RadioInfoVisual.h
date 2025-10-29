@@ -34,6 +34,9 @@ public:
 
 	static void DrawRadioInfo(DXFont* fontArtist, DXFont* fontTrack, bool onTheWheel) {
 
+		if (!fontArtist || !fontTrack)
+			return;
+
 		if (!onTheWheel && !isNowShownOnTheWheel) {
 			opacityText = opacityAnimationText->GetValue(255, 500, 3000);
 			opacityTextOutline = opacityAnimationOutline->GetValue(200, 500, 3000);

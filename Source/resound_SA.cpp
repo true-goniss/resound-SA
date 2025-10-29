@@ -27,25 +27,20 @@ public:
 
     resound_SA() {
 
-        DXFont* fontArtist = new DXFont();
-        DXFont* fontTrack = new DXFont();
-
-        InitFonts(fontArtist, fontTrack);
+        InitFonts();
 
         Events::initRwEvent += [] {
             Compatibility::InstallCompatibilityPatches();
             HudController::Init();
         };
 
-        Events::processScriptsEvent += [this, fontArtist, fontTrack] {
+        Events::processScriptsEvent += [this] {
             if (init) return;
 
             if (plugin::Command<Commands::IS_PLAYER_PLAYING>(0))
             {
                 init = true;
 
-                Fonts::fArtist = fontArtist;
-                Fonts::fTrack = fontTrack;
                 CassettePlayer::Initialize();
                 ResoundAudioEngine::Initialize();
                 GamePausedWatcher::Initialize();
@@ -62,16 +57,17 @@ public:
         
     }
 
-    static void InitFonts(DXFont* fontArtist, DXFont* fontTrack) {
+    static void InitFonts() {
 
         const char* fontPath = "Bank_Gothic_Medium.ttf";
         const char* fontName = "Bank Gothic(RUS BY LYAJKA)";
 
-        Events::initRwEvent.Add([fontArtist, fontPath, fontName]() { fontArtist->InitFont(fontPath, fontName, 25); });
-        Events::d3dResetEvent.Add([fontArtist, fontPath, fontName]() { fontArtist->InitFont(fontPath, fontName, 25); });
-
-        Events::initRwEvent.Add([fontTrack, fontPath, fontName]() { fontTrack->InitFont(fontPath, fontName, 22); });
-        Events::d3dResetEvent.Add([fontTrack, fontPath, fontName]() { fontTrack->InitFont(fontPath, fontName, 22); });
+        Fonts::Initialize(
+            fontPath,
+            fontName,
+            25,
+            22
+        );
     }
 
 } _resound_SA;

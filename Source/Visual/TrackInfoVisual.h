@@ -98,6 +98,9 @@ public:
 
 	static void DrawTrackInfo(DXFont* fontArtist, DXFont* fontTrack) {
 
+		if (!fontArtist || !fontTrack)
+			return;
+
 		opacityText = opacityAnimationText->GetValue(255, 500, 3000);
 		opacityTextOutline = opacityAnimationOutline->GetValue(200, 500, 3000);
 

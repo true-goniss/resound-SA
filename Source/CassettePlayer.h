@@ -116,12 +116,19 @@ static class CassettePlayer
 
             if (TrackInfoVisual::opacityAnimationText->isAnimationNow)
             {
-                TrackInfoVisual::DrawTrackInfo(Fonts::fArtist, Fonts::fTrack);
+                TrackInfoVisual::DrawTrackInfo(
+                    Fonts::getFontArtist(), 
+                    Fonts::getFontTrack()
+                );
             }
             else if
                (RadioInfoVisual::opacityAnimationText->isAnimationNow)
             {
-                RadioInfoVisual::DrawRadioInfo(Fonts::fArtist, Fonts::fTrack, false);
+                RadioInfoVisual::DrawRadioInfo(
+                    Fonts::getFontArtist(), 
+                    Fonts::getFontTrack(), 
+                    false
+                );
             }
         };
 

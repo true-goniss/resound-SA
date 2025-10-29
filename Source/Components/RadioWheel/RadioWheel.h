@@ -261,7 +261,11 @@ public:
 
 		if (!state_.isShowing) return;
 
-		RadioInfoVisual::DrawRadioInfo(Fonts::fArtist, Fonts::fTrack, true);
+		RadioInfoVisual::DrawRadioInfo(
+			Fonts::getFontArtist(), 
+			Fonts::getFontTrack(), 
+			true
+		);
 
 		const float centerX = RsGlobal.maximumWidth / 2;
 		const float centerY = RsGlobal.maximumHeight / 2;
