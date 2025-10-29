@@ -103,7 +103,15 @@ static class CassettePlayer
         if (initialized) return;
         initialized = true;
 
-        cassPlayerMus->soundPlayer->showTrackInfoOnNewTrack = true;
+        cassPlayerMus->soundPlayer->setOnNewTrackPlayed(
+            [](std::string musicfile) {
+
+                std::string rawFilename = Utils::remove_music_extension(musicfile);
+                std::pair artistAndName = Utils::GetTrackArtistAndName(rawFilename);
+
+                TrackInfoVisual::ShowWithAnimation(artistAndName.first, artistAndName.second);
+            }
+        );
 
         Events::drawingEvent += [] {
 

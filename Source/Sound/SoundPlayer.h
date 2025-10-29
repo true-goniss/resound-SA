@@ -16,6 +16,9 @@ using namespace std;
 
 class SoundPlayer
 {
+
+    std::function<void(std::string)> onNewTrackPlayedCallback = nullptr;
+
     bool initializedBASS = false;
     bool looped = false;
     bool wasActiveBeforePause = false;
@@ -38,7 +41,6 @@ public:
 
     bool isEmpty = false;
     std::string folder = "";
-    bool showTrackInfoOnNewTrack = false;
     bool isRewindNow = false;
     float rewindSpeed = 1.0f;
 
@@ -94,9 +96,8 @@ public:
 
         if (stream != 0) {
 
-            std::string rawFilename = Utils::remove_music_extension(musicfile);
-            std::pair artistAndName = Utils::GetTrackArtistAndName(rawFilename);
-            if (showTrackInfoOnNewTrack) TrackInfoVisual::ShowWithAnimation(artistAndName.first, artistAndName.second);
+            if(onNewTrackPlayedCallback)
+                onNewTrackPlayedCallback(musicfile);
 
             BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, currentVolume);
 
@@ -115,6 +116,10 @@ public:
             // BASS_Free();
             // std::to_string( BASS_ErrorGetCode() )
         }
+    }
+
+    void setOnNewTrackPlayed(std::function<void(std::string)> callback) {
+        onNewTrackPlayedCallback = callback;
     }
 
     float percentPlayback() {
