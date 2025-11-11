@@ -16,6 +16,12 @@ u32 CurrentTime() {
         );
 }
 
+u32 CurrentGameTimeNonClipped() {
+    return static_cast<uint64_t>(
+        CTimer::m_snTimeInMillisecondsNonClipped
+    );
+}
+
 template<TimeFunc T>
 class Timer {
     u32 curTimeStamp = 0;

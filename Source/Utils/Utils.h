@@ -3,6 +3,7 @@
 #include <game_sa/CCamera.h>
 #include "CClock.h"
 #include "Timer.h"
+#include "CHud.h"
 
 #include <filesystem>
 #include <random>
@@ -79,7 +80,7 @@ static class Utils
     /*  -----------------------------  math --------------------------------- */
 
     static float getElapsedTimePercentage(float amountOfTimeMs, float initialTime) {
-        int currentTime = CurrentTime();
+        int currentTime = CurrentGameTimeNonClipped();
         int elapsedTime = currentTime - initialTime;
 
         float percentage = static_cast<float>(elapsedTime) / static_cast<float>(amountOfTimeMs) * 100.0f;
@@ -439,6 +440,10 @@ static class Utils
         oss << std::put_time(std::localtime(&time), "%Y-%m-%d %H:%M:%S");
         return oss.str();
     };
+
+    static void DebugCHudHelpMessage(const std::string& text, bool permanent) {
+        CHud::SetHelpMessage(text.c_str(), true, permanent, false);
+    }
 
     /* ----------  game ----------- */
 

@@ -17,7 +17,7 @@ public:
 	bool directionUp;
 
 	ShowFromDownAnimation() {
-		animationTime = CurrentTime();
+		animationTime = CurrentGameTimeNonClipped();
 		isAnimationNow = false;
 		directionUp = false;
 	}
@@ -42,7 +42,7 @@ public:
 
 		if (directionUp == _directionUp || isAnimationNow) return;
 
-		animationTime = CurrentTime();
+		animationTime = CurrentGameTimeNonClipped();
 		isAnimationNow = true;
 		directionUp = _directionUp;
 	}
