@@ -6,7 +6,7 @@
 
 #include <plugin.h>
 #include <game_sa\CAudioEngine.h>
-#include "../Utils/Timer.h"
+#include <algorithm> // std::clamp
 
 
 enum SlowMoType /// gameobjects
@@ -19,63 +19,51 @@ enum class MenuVolumeMemoryAddress {
 	SFX = 0xBA6797
 };
 
-ThiscallEvent <AddressList<0x4EF3E0, H_CALL>, PRIORITY_AFTER, ArgPickN<CAESound*, 0>, void(CAESound*)> onGetSlowMoFrequencyScalingFactor;
+//static ThiscallEvent <AddressList<0x4EF3E0, H_CALL>, PRIORITY_AFTER, ArgPickN<CAESound*, 0>, void(CAESound*)> onGetSlowMoFrequencyScalingFactor;
 
 static class ResoundAudioEngine
 {
-	static inline SoundFade* soundFadeSlowMoSFX = new SoundFade(true, true);
 	static inline bool isSlowMoActive = false;
 
-	static constexpr float maxVolume = 0.23f;
-	static inline float sfxBasicVolume = maxVolume;
-	static inline Timer<CurrentTime> tmrDisableSlowMoSoundFade;
+	static constexpr float SLOWMO_VOLUME_DUCK_MULT = 0.25f;
+	static constexpr float SA_MAX_VOLUME_VALUE_CONST = 64.0f;
+	static constexpr float RADIO_MAX_LIMIT = 0.23f; // should be configurable
+	static inline float sfxOriginalVolume = RADIO_MAX_LIMIT;
 
 	static float GetSettingsVolume(MenuVolumeMemoryAddress address) {
 		unsigned char* volumeSA = reinterpret_cast<unsigned char*>(address);
+		if (!volumeSA) return 1.0f;
 
-		float maxVal = address == MenuVolumeMemoryAddress::RADIO ? maxVolume : 1.f;
+		// SA value is 0-64
+		float rawValue = static_cast<float>(*volumeSA & 0x7F);
+		float normalized = std::clamp(rawValue / SA_MAX_VOLUME_VALUE_CONST, 0.0f, 1.0f);
 
-		if (volumeSA != nullptr) {
-			unsigned int intValue = (*volumeSA) & 0x7F;
-			float volumeValue = Utils::Lerp(0.0f, maxVal, (float)intValue / 64.0f);
-			return volumeValue;
-		}
-
-		return maxVolume;
+		float limit = (address == MenuVolumeMemoryAddress::RADIO) ? RADIO_MAX_LIMIT : 1.0f;
+		return normalized * limit;
 	}
 
 	static void SetSFXVolumeSA(float volume) {
+
 		CAudioEngine* audioEngine = reinterpret_cast<CAudioEngine*>(0xB6BC90);
 
 		if (audioEngine) {
-
-			uint8_t sfxVolume = static_cast<uint8_t>(volume * 64.0f);
+			//  0.0-1.0 to 0-64
+			uint8_t sfxVolume = static_cast<uint8_t>(std::clamp(volume, 0.0f, 1.0f) * SA_MAX_VOLUME_VALUE_CONST);
 			audioEngine->SetEffectsMasterVolume(sfxVolume);
 		}
 	}
 
-	static inline void SoundFadeProcess_SA_SFX() {
-		while (true) {
-			std::this_thread::sleep_for(std::chrono::milliseconds(50));
-			
-			if (soundFadeSlowMoSFX->isActive) {
-				float targetVolume = soundFadeSlowMoSFX->GetValue(sfxBasicVolume * 0.25f, sfxBasicVolume, 500, 550);
-				SetSFXVolumeSA(targetVolume);
-			}
-		}
-	}
-
 	static inline void OnSlowMoActivation(SlowMoType type) {
-		sfxBasicVolume = GetSFXVolumeSA();
+		if (type != SlowMoType::AUD_SLOWMO_RADIOWHEEL) return;
 
-		if (type == SlowMoType::AUD_SLOWMO_RADIOWHEEL) {
-			soundFadeSlowMoSFX->Activate();
-		}
+		sfxOriginalVolume = GetSFXVolumeSA();
+		SetSFXVolumeSA(sfxOriginalVolume * SLOWMO_VOLUME_DUCK_MULT);
 	}
 
 	static inline void OnSlowMoDeActivation(SlowMoType type) {
-		tmrDisableSlowMoSoundFade.Start();
-		soundFadeSlowMoSFX->Deactivate();
+		if (type != SlowMoType::AUD_SLOWMO_RADIOWHEEL) return;
+
+		SetSFXVolumeSA(sfxOriginalVolume);
 	}
 
 public:
@@ -86,11 +74,7 @@ public:
 		if (init) return;
 		init = true;
 
-		std::thread soundFadeSFXProcessThread(&SoundFadeProcess_SA_SFX);
-		
-		soundFadeSFXProcessThread.detach();
-
-		void* targetAddress = (void*)0x4EF440;
+		// void* targetAddress = (void*)0x4EF440;
 	}
 
 	static void ActivateSlowMoMode(SlowMoType type) {
@@ -108,7 +92,7 @@ public:
 	}
 
 	static float GetMaxVolume() {
-		return maxVolume;
+		return RADIO_MAX_LIMIT;
 	}
 
 	static float GetRadioVolumeSA() {

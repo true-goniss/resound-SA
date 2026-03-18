@@ -1,502 +1,537 @@
-﻿#pragma once
+﻿
+#pragma once
 
 /*
-    by gon_iss (c) 2024
+    by gon_iss (c) 2026
 */
 
-#include "CAudioEngine.h"
 #include "RadioStation.h"
-#include "../SoundPlayer.h"
-#include "../../Animations/SoundFade.h"
+
+#include "../AudioSelector.h"
+#include "../AudioResourceManager.h"
+
+#include "../../Utils/pragmascope/pragmascope_client.h"
 #include "../../Utils/Keys.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+#include <atomic>
+#include <algorithm>
 
 using namespace std;
 
-enum class RadioState {
-    None,
-    PlayMusicTrack,
-    TrackMid,
-    WaitingForOutro,
-    SkippingOutro,
-    PlayingIntro,
-    MusicTrackEnded,
-    PlayAdvert,
-    AdvertEnded,
-    PlayID,
-    PlaySolo,
-    PlayNews,
-    PlayingOutro,
-    OutroEnded
+// --- States ---
+
+enum class BTStatus { SUCCESS, FAILURE, RUNNING };
+enum class SegmentType { NONE, MUSIC, ADVERT, NEWS, STATION_ID, SOLO };
+
+
+struct RadioSegment {
+    SegmentType type = SegmentType::NONE;
+    string fileName;
+
+    int durationMs = 0;
+    int startTimeMs = 0;
+
+
+    string introFile;
+    int introDurationMs = 0;
+    int introOffsetMs = 0;
+
+    string outroFile;
+    int outroDurationMs = 0;
+
+    bool hasIntro = false;
+    bool hasOutro = false;
+    bool isReady = false;
+
+
+    std::atomic<bool> isStartedInBass{ false };
+    bool introTriggered = false;
+    bool outroTriggered = false;
+
+    AudioTrackTicket musicTicket;
+    AudioTrackTicket introTicket;
+    AudioTrackTicket outroTicket;
+
+    bool IsFinished(int virtualTimeMs) const {
+        if (!isReady) return false;
+        return virtualTimeMs >= (startTimeMs + durationMs);
+    }
 };
 
-class RadioStation_V : public RadioStation
-{
-private:
+/**
+ * @brief Blackboard / state storage
+ */
+struct RadioBlackboard {
+    int virtualTimeMs = 0;
+    shared_ptr<RadioSegment> currentSegment = nullptr;
 
-    const std::string KEYWORD_NEWS = "NEWS";
-    const std::string KEYWORD_AD = "AD";
-    const std::string KEYWORD_EVENING = "EVENING";
-    const std::string KEYWORD_MORNING = "MORNING";
+    int tracksSinceLastAd = 0;
+    int tracksSinceLastNews = 0;
+    int targetTracksUntilAd = 0;
+    int adsToPlayInRow = 1;
+    int currentAdInRowCounter = 0;
 
+    float currentVolume = 1.0f; // Ducking (0.25 - 1.0)
+    float targetVolume = 1.0f;
+};
 
-    const int SLEEP_MAIN_LOOP_MS = 100;
-    const int DEBUG_JUMP_PERCENT = 93;
-    const float INTRO_SKIP_PROBABILITY = 0.37f;
-    const float SOLO_PLAY_PROBABILITY = 0.2f;
-    const int SLEEP_AFTER_NEWS_MS = 1000;
-    const int MUSIC_FADE_OUT_OFFSET = 4000;
-    const int EVENING_START_HOUR = 19;
-    const int EVENING_END_HOUR = 23;
-    const int MORNING_START_HOUR = 5;
-    const int MORNING_END_HOUR = 9;
+class RadioStation_V;
+
+// --- Behavior Tree base ---
+
+class BTNode {
+public:
+    virtual ~BTNode() = default;
+    virtual BTStatus Tick(RadioStation_V* agent) = 0;
+};
+
+/**
+ * @brief Selector runs children until one returns SUCCESS or RUNNING.
+ */
+class BTSelector : public BTNode {
+    vector<unique_ptr<BTNode>> children;
+public:
+    void AddChild(unique_ptr<BTNode> c) { children.push_back(move(c)); }
+    BTStatus Tick(RadioStation_V* a) override {
+        for (auto& child : children) {
+            BTStatus s = child->Tick(a);
+            if (s != BTStatus::FAILURE) return s;
+        }
+        return BTStatus::FAILURE;
+    }
+};
+
+/**
+ * @brief Sequence: runs children until all SUCCESS.
+ */
+class BTSequence : public BTNode {
+    vector<unique_ptr<BTNode>> children;
+public:
+    void AddChild(unique_ptr<BTNode> c) { children.push_back(move(c)); }
+    BTStatus Tick(RadioStation_V* a) override {
+        for (auto& child : children) {
+            BTStatus s = child->Tick(a);
+            if (s != BTStatus::SUCCESS) return s;
+        }
+        return BTStatus::SUCCESS;
+    }
+};
+
+/**
+ * @brief Planning node
+ */
+class ActionPlanner : public BTNode {
+public:
+    BTStatus Tick(RadioStation_V* a) override;
+};
+
+/**
+ * @brief Execution node
+ */
+class ActionExecutor : public BTNode {
+public:
+    BTStatus Tick(RadioStation_V* a) override;
+};
+
+class RadioStation_V : public RadioStation {
+    friend class ActionPlanner;
+    friend class ActionExecutor;
 
 public:
-    RadioStation_V(std::string folder, SettingsRadioStation* settings) : RadioStation(folder, settings) {
+    RadioBlackboard bb;
+    vector<double> adProbabilities = { 0.2, 0.1, 0.3, 0.2, 0.2 };
 
-        InitPlayer(this->musicPlayer, this->path, false);
-        InitPlayer(this->advertsPlayer, adverts_path, false);
-        InitPlayer(this->newsPlayer, news_path, false);
-        InitPlayer(this->advertsTransitionPlayer, to_path, false);
-        InitPlayer(this->idPlayer, id_path, false);
-        InitPlayer(this->introPlayer, intro_path, false);
-        InitPlayer(this->soloPlayer, solo_path, false);
-        InitPlayer(this->outroPlayer, general_path, false);
+private:
+    unique_ptr<BTNode> rootNode;
 
-        std::thread managePlaybackThread(&RadioStation_V::ManagePlayback, this);
-        managePlaybackThread.detach();
+    AudioSelector musicSelector{ 15 };
+    AudioSelector voiceSelector{ 20 };
+    AudioSelector adSelector{ 10 };
+    AudioSelector newsSelector{ 5 };
+    AudioSelector idSelector{ 5 };
+
+    string intro_path, general_path, ad_path, news_path, id_path, solo_path, time_path;
+    SoundPlayer* voicePlayer = nullptr;
+
+    const int MAX_CATCH_UP_STEPS = 5;
+    const float SOLO_PROBABILITY = 0.15f;
+    const float INTRO_PROBABILITY = 0.60f;
+    const int NEWS_THRESHOLD = 8;
+
+    PragmaScope* debugScope = nullptr;
+
+public:
+    RadioStation_V(string folder, SettingsRadioStation* settings) : RadioStation(folder, settings) {
+        debugScope = new PragmaScope("Radio_V_BT_" + folder, "AudioLogic");
+
+        intro_path = path + "\\intro\\";
+        general_path = path + "\\general\\";
+        id_path = path + "\\id\\";
+        solo_path = path + "\\solo\\";
+        time_path = path + "\\time\\";
+        ad_path = "resound\\radio_adverts\\adverts_v\\";
+        news_path = "resound\\radio_news\\news_v\\";
+
+        InitPlayer(musicPlayer, path, false);
+        InitPlayer(voicePlayer, solo_path, false);
+
+        bb.targetTracksUntilAd = Utils::getRandomIntWithDifferentProbabilities(adProbabilities);
+        bb.adsToPlayInRow = Utils::getRandomInt(1, 2);
+
+        SetupBT();
     }
 
     std::pair<std::string, std::string> TryGetArtistTitle() const override {
-        if (musicPlayer->isPlayingOrActive() && isMusicTrackNow) {
-            return Utils::GetTrackArtistAndName(Utils::remove_music_extension(musicPlayer->lastplayedTrack));
+
+        if (bb.currentSegment && !bb.currentSegment->fileName.empty()) {
+            
+            if (bb.currentSegment->type != SegmentType::MUSIC) return { "", "" };
+
+            return Utils::GetTrackArtistAndName(Utils::remove_music_extension(Utils::GetFileNameFromPath(bb.currentSegment->fileName)));
         }
-        else {
-            return std::make_pair("", "");
+
+        return { "", "" };
+    }
+
+    virtual ~RadioStation_V() {
+        if (debugScope) delete debugScope;
+        if (voicePlayer) delete voicePlayer;
+    }
+
+    void SetupBT() {
+        // Sequence root: plan -> execute
+        auto root = make_unique<BTSequence>();
+        root->AddChild(make_unique<ActionPlanner>());
+        root->AddChild(make_unique<ActionExecutor>());
+        rootNode = move(root);
+    }
+
+    void Launch() override {}
+
+    void PlayMusicTrack() override {}
+
+    void Update(float dt) override {
+        if (forcePaused || !rootNode) return;
+
+        bb.virtualTimeMs += (int)dt;
+
+        //if (muted)
+        //    return;
+
+        // F7 test key
+        if (Keys::GetKeyJustDown(rsF7) && bb.currentSegment && bb.currentSegment->isReady) {
+            int elapsed = bb.virtualTimeMs - bb.currentSegment->startTimeMs;
+            int remaining = bb.currentSegment->durationMs - elapsed;
+            int skipMs = 25000;
+
+            if (remaining < skipMs) skipMs = max(0, remaining - 2000);
+            bb.virtualTimeMs += skipMs;
+
+            int newElapsed = bb.virtualTimeMs - bb.currentSegment->startTimeMs;
+
+            // async track pos
+            if (bb.currentSegment->type == SegmentType::MUSIC && musicPlayer) {
+
+                AudioResourceManager::Enqueue([this, newElapsed]() {
+                    if (this->musicPlayer) {
+                        this->musicPlayer->setTrackPositionMs(newElapsed);
+                    }
+                    });
+            }
+            else if (voicePlayer) {
+                AudioResourceManager::Enqueue([this, newElapsed]() {
+                    if (this->voicePlayer) {
+                        this->voicePlayer->setTrackPositionMs(newElapsed);
+                    }
+                    });
+            }
+
+            if (debugScope) debugScope->info("BT_Radio", "Test Skip: " + to_string(skipMs) + "ms");
+        }
+
+        //int steps = 0;
+        //while (steps < MAX_CATCH_UP_STEPS) {
+            //if (rootNode->Tick(this) != BTStatus::SUCCESS) 
+                //break;
+        //    steps++;
+        //}
+
+        rootNode->Tick(this);
+
+        if (Keys::GetKeyJustDown(rsF8)) LogStatus();
+    }
+
+
+    void Pause() override {
+        if (this->forcePaused) return;
+        this->forcePaused = true;
+
+        if (bb.currentSegment) {
+
+            if (bb.currentSegment->type == SegmentType::MUSIC) {
+                if (AudioResourceManager::GetTrackPositionMs(bb.currentSegment->musicTicket) != -1) {
+                    musicPlayer->pauseTrack();
+                }
+
+                bool voiceWasActive = (
+                    AudioResourceManager::GetTrackPositionMs(bb.currentSegment->introTicket) != -1 || 
+                    AudioResourceManager::GetTrackPositionMs(bb.currentSegment->outroTicket) != -1
+                );
+
+                if (voiceWasActive)
+                    voicePlayer->pauseTrack();
+            }
+            else {
+                voicePlayer->pauseTrack();
+            }
         }
     }
 
-    std::string adverts_path = "resound\\radio_adverts\\adverts_v\\";
-    std::string news_path = "resound\\radio_news\\news_v\\";
-    std::string to_path = this->path + "\\to\\";
-    std::string id_path = this->path + "\\id\\";
-    std::string intro_path = this->path + "\\intro\\";
-    std::string solo_path = this->path + "\\solo\\";
-    std::string general_path = this->path + "\\general\\";
-    std::string time_path = this->path + "\\time\\";
+    void Unpause() override {
+        if (!this->forcePaused) return;
+        this->forcePaused = false;
 
-    RadioState currentState = RadioState::None;
-    bool stateChanged = false;
+        if (bb.currentSegment) {
 
-    int countAdverts = 0;
-    int countMusicTracks = 0;
-    int countMusicTracksForNews = 0;
-    int introFadeStartMs = 10000;
-    int introFadeStartMaxMs = 20000;
+            if (bb.currentSegment->type == SegmentType::MUSIC) {
+                if (AudioResourceManager::GetTrackPositionMs(bb.currentSegment->musicTicket) != -1)
+                    musicPlayer->playContinueTrack();
 
-    int wholeOutroFadeLength = 5000;
-    int quanTracksBeforeNews = 10;
-    int quanAdverts = 1;
+                bool voiceWasActive = (AudioResourceManager::GetTrackPositionMs(bb.currentSegment->introTicket) != -1 ||
+                    AudioResourceManager::GetTrackPositionMs(bb.currentSegment->outroTicket) != -1);
 
-    unsigned int outroPlayTime = 0;
-    unsigned int trackStartTime = CurrentTime();
-
-    bool isDebugging = true;
-
-    bool isMusicTrackNow = false;
-    bool isAdvertNow = false;
-    bool outro_to_adverts = false;
-    bool outro_to_news = false;
-    bool outro_to_time = false;
-    bool introPassed = false;
-    bool newsPlayed = false;
-
-    SoundPlayer* advertsPlayer = nullptr;
-    SoundPlayer* advertsTransitionPlayer = nullptr;
-    SoundPlayer* idPlayer = nullptr;
-    SoundPlayer* introPlayer = nullptr;
-    SoundPlayer* outroPlayer = nullptr;
-    SoundPlayer* newsPlayer = nullptr;
-    SoundPlayer* soloPlayer = nullptr;
-
-    std::vector<double> quanTracksBeforeAdvertsProbabilities = { 0.2, 0.1, 0.3, 0.2, 0.2 };
-
-    void ManagePlayback() {
-
-        while (true) {
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_MAIN_LOOP_MS));
-
-            if (isDebugging) {
-
-                if (Keys::GetKeyJustDown(rsF4)) {
-                    if (muted) continue;
-
-                    if (isAdvertNow) {
-                        advertsPlayer->pauseTrack();
-                    }
-                    else {
-                        musicPlayer->pauseTrack();
-                    }
-                }
-
-                if (Keys::GetKeyJustDown(rsF6)) {
-                    if (muted) continue;
-                }
-
-                if (Keys::GetKeyJustDown(rsF7)) {
-                    if (muted) continue;
-                    musicPlayer->setPositionPercent(DEBUG_JUMP_PERCENT);
-                }
+                if (voiceWasActive)
+                    voicePlayer->playContinueTrack();
             }
-
-            if (forcePaused) {
-                continue;
+            else {
+                voicePlayer->playContinueTrack();
             }
-
-            int trackPosMs = musicPlayer->getTrackPositionMs();
-
-            if (stateChanged) {
-                stateChanged = false;
-
-                ProcessStateChanged();
-
-                continue;
-            }
-
-            ProcessState(trackPosMs);
         }
     }
-
-    void Pause() override { RadioStation::Pause(); }
-    void Unpause() override { RadioStation::Unpause(); }
 
     void Randomize() override {
-        timeState = "none";
-        previoustimeState = "";
-        timePlayed = false;
-        timeNeedsToBePlayed = false;
-        timeSpeeches = "";
-        Stop();
-        PlayMusicTrack();
-        RadioStation::Randomize();
+        bb.currentSegment = nullptr;
+        bb.virtualTimeMs = Utils::getRandomInt(0, 1000 * 60 * 120);
+        musicPlayer->stopTrack();
+        voicePlayer->stopTrack();
     }
 
-    void Mute() override { RadioStation::Mute(); }
-    void Unmute() override { RadioStation::Unmute(); }
-    void Stop() override { RadioStation::Stop(); }
+    void UpdateVolume(bool isMissionTalkingNow) override {
+        if (muted) return;
 
-    int quanTracksBeforeAdverts = Utils::getRandomIntWithDifferentProbabilities(quanTracksBeforeAdvertsProbabilities);
+        auto s = bb.currentSegment;
 
-    void UpdateQuanAdverts() {
-        quanAdverts = Utils::getRandomInt(1, 2);
-    }
+        bool djVoiceActive = false;
 
-    bool isEveningTime() {
-        int hour = Utils::GameHours();
-        return hour > EVENING_START_HOUR && hour < EVENING_END_HOUR;
-    }
+        if (s->introTriggered && AudioResourceManager::GetTrackPositionMs(s->introTicket) != -1) djVoiceActive = true;
+        if (s->outroTriggered && AudioResourceManager::GetTrackPositionMs(s->outroTicket) != -1) djVoiceActive = true;
 
-    bool isMorningTime() {
-        int hour = Utils::GameHours();
-        return hour > MORNING_START_HOUR && hour < MORNING_END_HOUR;
-    }
+        bb.targetVolume = djVoiceActive || isMissionTalkingNow ? VOL_MULT_DUCKED : VOL_MULT_NORMAL;
 
-    bool outroNotFound = false;
-    bool eveningTimePlayed = false;
-    bool morningTimePlayed = false;
+        if (abs(bb.currentVolume - bb.targetVolume) > 0.01f) {
+            float step = FADE_SPEED * 16.0f; // 16ms approx frame
+            if (bb.currentVolume < bb.targetVolume)
+                bb.currentVolume = min(bb.currentVolume + step, bb.targetVolume);
+            else
+                bb.currentVolume = max(bb.currentVolume - step, bb.targetVolume);
 
-    void PlayMusicTrack(const bool playIntro) {
-        PlayMusicTrack();
-        introPassed = false;
-        if (playIntro) {
-            trackStartTime = CurrentTime();
-            ChangeState(RadioState::PlayMusicTrack);
-        }
-    }
-
-    void PlayTime(SoundPlayer*& player) {
-        std::string thisTime = "";
-        std::string timeFile = "";
-
-        if (isEveningTime()) {
-            thisTime = "EVENING" + std::to_string(Utils::GameDays()) + ";";
-            timeFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_EVENING, time_path);
-        }
-
-        if (isMorningTime()) {
-            thisTime = "MORNING" + std::to_string(Utils::GameDays()) + ";";
-            timeFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_MORNING, time_path);
-        }
-
-        timeSpeeches += thisTime;
-        if (timeFile == "") {
-            outroNotFound = true;
-            return;
-        }
-
-        player = new SoundPlayer(time_path);
-        player->playTrackBASS(timeFile);
-        CheckVolumeOnPlay(player);
-    }
-
-    void PlayMusicTrack() {
-        isMusicTrackNow = true;
-        isAdvertNow = false;
-        RadioStation::PlayMusicTrack();
-        countMusicTracks++;
-        countMusicTracksForNews++;
-    }
-
-    void PlaySolo() {
-        isMusicTrackNow = false;
-        isAdvertNow = false;
-        ChangeState(RadioState::PlaySolo);
-        soloPlayer->playNewTrack();
-        CheckVolumeOnPlay(soloPlayer);
-    }
-
-    void PlayID() {
-        isMusicTrackNow = false;
-        isAdvertNow = false;
-        idPlayer->playNewTrack();
-        CheckVolumeOnPlay(idPlayer);
-    }
-
-    void PlayNews() {
-        newsPlayed = true;
-        isMusicTrackNow = false;
-        isAdvertNow = false;
-        newsPlayer->playNewTrack();
-        CheckVolumeOnPlay(newsPlayer);
-    }
-
-protected:
-
-    void ChangeState(RadioState newState) {
-        currentState = newState;
-        stateChanged = true;
-    }
-
-    void ProcessStateChanged() {
-        if (currentState == RadioState::PlayMusicTrack) {
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(introFadeStartMs - introFadeLengthMs));
-
-            bool skipIntro = Utils::getRandomBoolWithProbability(INTRO_SKIP_PROBABILITY);
-
-            if (skipIntro) {
-                ChangeState(RadioState::TrackMid);
-                return;
+            if (musicPlayer && s->type == SegmentType::MUSIC) {
+                musicPlayer->setVolume(bb.currentVolume * basicVolume);
             }
-            else {
-                if (isMorningTime() && !morningTimePlayed) {
-                    introAndOutroMusicFade->Activate();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-                    PlayTime(introPlayer);
 
-                    morningTimePlayed = true;
-                    eveningTimePlayed = false;
-                }
-                else if (isEveningTime() && !eveningTimePlayed) {
-                    introAndOutroMusicFade->Activate();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-                    PlayTime(introPlayer);
+            if (voicePlayer && isMissionTalkingNow) {
+                voicePlayer->setVolume(bb.currentVolume * basicVolume);
+            }
+            else if (voicePlayer) {
+                voicePlayer->setVolume(basicVolume);
+            }
+        }
+    }
 
-                    morningTimePlayed = false;
-                    eveningTimePlayed = true;
-                }
-                else {
-                    trackname = Utils::tryFindRandomFileWithContainedName(trackname, intro_path);
+    void LogStatus() {
+        string segName = bb.currentSegment ? Utils::GetFileNameFromPath(bb.currentSegment->fileName) : "None";
+        string info = "Time: " + to_string(bb.virtualTimeMs) + "ms | Seg: " + segName + " | Type: " + to_string((int)bb.currentSegment->type);
+        if (debugScope) debugScope->info("BT_Radio", info);
+    }
 
-                    if (trackname == "") {
-                        introAndOutroMusicFade->Activate();
-                        introPlayer = new SoundPlayer(general_path); // TODO if no general continue
-                        std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-                        introPlayer->playNewTrack();
-                    }
-                    else {
-                        introAndOutroMusicFade->Activate();
-                        introPlayer = new SoundPlayer(intro_path);
-                        std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-                        introPlayer->playTrackBASS(trackname);
-                    }
+    /**
+     * @brief Fulfilles an empty segment
+     */
+    void ConfigureSegment(shared_ptr<RadioSegment> s, string file, SegmentType type) {
+        s->type = type;
+        s->fileName = file;
+
+        // time measuring
+        SoundPlayer* measurePlayer = (type == SegmentType::MUSIC) ? musicPlayer : voicePlayer;
+        s->durationMs = measurePlayer ? measurePlayer->getTrackLengthMs(file) : 1000;
+
+        s->startTimeMs = bb.currentSegment ? (bb.currentSegment->startTimeMs + bb.currentSegment->durationMs) : bb.virtualTimeMs;
+
+        if (type == SegmentType::MUSIC) {
+            s->hasIntro = Utils::getRandomBoolWithProbability(INTRO_PROBABILITY);
+            s->hasOutro = Utils::getRandomBoolWithProbability(0.5f);
+            s->introOffsetMs = Utils::getRandomInt(4000, 12000);
+
+            if (s->hasIntro) {
+                int hour = Utils::GameHours();
+                string timeKey = (hour >= 5 && hour <= 10) ? "MORNING" : (hour >= 18 && hour <= 23) ? "EVENING" : "";
+
+                if (!timeKey.empty()) s->introFile = voiceSelector.SelectByKeyword(time_path, timeKey);
+                if (s->introFile.empty()) {
+                    string trackKey = Utils::remove_music_extension(Utils::GetFileNameFromPath(file));
+                    s->introFile = voiceSelector.SelectByKeyword(intro_path, trackKey);
                 }
 
-                if (introPlayer->isEmpty) {
-                    ChangeState(RadioState::TrackMid);
-                    return;
-                }
-
-                CheckVolumeOnPlay(introPlayer);
-                ChangeState(RadioState::PlayingIntro);
-                wholeIntroFadeLength = introPlayer->getTrackLengthMs();
-                std::this_thread::sleep_for(std::chrono::milliseconds(wholeIntroFadeLength));
-                ChangeState(RadioState::TrackMid);
-                return;
-            }
-        }
-
-        if (currentState == RadioState::TrackMid) {
-            if (isMorningTime() && !morningTimePlayed) {
-                PlayTime(outroPlayer);
-                morningTimePlayed = true;
-                eveningTimePlayed = false;
-            }
-            else if (isEveningTime() && !eveningTimePlayed) {
-                PlayTime(outroPlayer);
-                morningTimePlayed = false;
-                eveningTimePlayed = true;
-            }
-            else {
-                ChangeState(RadioState::WaitingForOutro);
-
-                if (countMusicTracksForNews >= quanTracksBeforeNews) {
-                    if (!Utils::DirectoryCheckRelative(to_path)) {
-                        ChangeState(RadioState::SkippingOutro);
-                        return;
-                    }
-
-                    std::string to_newsRandomFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_NEWS, to_path);
-                    outroPlayer = new SoundPlayer(to_path);
-                    outroPlayer->playTrackBASS(to_newsRandomFile);
-                }
-                else if (countMusicTracks >= quanTracksBeforeAdverts) {
-                    if (!Utils::DirectoryCheckRelative(to_path)) {
-                        ChangeState(RadioState::SkippingOutro);
-                        return;
-                    }
-
-                    std::string to_advertRandomFile = Utils::tryFindRandomFileWithContainedName(KEYWORD_AD, to_path);
-                    outroPlayer = new SoundPlayer(to_path);
-                    outroPlayer->playTrackBASS(to_advertRandomFile);
-                }
-                else {
-                    bool skipOutro = false;
-                    if (!Utils::DirectoryCheckRelative(general_path) || skipOutro) {
-                        ChangeState(RadioState::SkippingOutro);
-                        return;
-                    }
-                    outroPlayer = new SoundPlayer(general_path);
-                    outroPlayer->playNewTrack();
-                }
+                if (!s->introFile.empty() && voicePlayer)
+                    s->introDurationMs = voicePlayer->getTrackLengthMs(s->introFile);
+                else
+                    s->hasIntro = false;
             }
 
-            outroPlayer->pauseTrack();
-            wholeIntroFadeLength = outroPlayer->getTrackLengthMs() + introFadeLengthMs;
-            outroPlayTime = musicPlayer->getTrackLengthMs() - MUSIC_FADE_OUT_OFFSET - outroPlayer->getTrackLengthMs();
-        }
+            if (s->hasOutro) {
+                s->outroFile = voiceSelector.SelectRandom(general_path);
 
-        if (currentState == RadioState::MusicTrackEnded) {
-            if (countMusicTracksForNews >= quanTracksBeforeNews) {
-                countMusicTracksForNews = 0;
-                newsPlayed = false;
-                ChangeState(RadioState::PlayNews);
-                return;
-            }
-            else {
-                if (countMusicTracks >= quanTracksBeforeAdverts) {
-                    ChangeState(RadioState::PlayAdvert);
-                    return;
-                }
-                else {
-                    bool playSolo = Utils::getRandomBoolWithProbability(SOLO_PLAY_PROBABILITY);
-                    if (playSolo) {
-                        isMusicTrackNow = false;
-                        isAdvertNow = false;
-                        ChangeState(RadioState::PlaySolo);
-                        soloPlayer->playNewTrack();
-                        CheckVolumeOnPlay(soloPlayer);
-                        return;
-                    }
-                    else {
-                        PlayMusicTrack(true);
-                        return;
-                    }
-                }
+                if (!s->outroFile.empty() && voicePlayer)
+                    s->outroDurationMs = voicePlayer->getTrackLengthMs(s->outroFile);
+                else
+                    s->hasOutro = false;
             }
         }
-
-        if (currentState == RadioState::PlayAdvert) {
-            outro_to_adverts = false;
-
-            if (musicPlayer->isPlayingOrActive()) {
-                musicPlayer->stopTrack();
-                musicPlayer->eraseChannel();
-            }
-
-            isMusicTrackNow = false;
-            isAdvertNow = true;
-            advertsPlayer->playNewTrack();
-            CheckVolumeOnPlay(advertsPlayer);
-            countAdverts++;
-            return;
-        }
-
-        if (currentState == RadioState::AdvertEnded) {
-            if (countAdverts <= quanAdverts) {
-                ChangeState(RadioState::PlayAdvert);
-                return;
-            }
-            else {
-                countMusicTracks = 0;
-                quanTracksBeforeAdverts = Utils::getRandomIntWithDifferentProbabilities(quanTracksBeforeAdvertsProbabilities);
-                UpdateQuanAdverts();
-                ChangeState(RadioState::PlayID);
-                return;
-            }
-        }
-
-        if (currentState == RadioState::PlayID) {
-            isMusicTrackNow = false;
-            isAdvertNow = false;
-            idPlayer->playNewTrack();
-            CheckVolumeOnPlay(idPlayer);
-            return;
-        }
-    }
-
-    void ProcessState(int trackPosMs) {
-
-        if (currentState == RadioState::PlayNews && !newsPlayer->isPlayingOrActive()) {
-            if (!newsPlayed) {
-                PlayNews();
-                std::this_thread::sleep_for(std::chrono::milliseconds(SLEEP_AFTER_NEWS_MS));
-            }
-            else {
-                ChangeState(RadioState::PlayID);
-            }
-        }
-
-        if (trackPosMs > (outroPlayTime - introFadeLengthMs) && currentState == RadioState::WaitingForOutro) {
-            ChangeState(RadioState::PlayingOutro);
-            introAndOutroMusicFade->Activate();
-            std::this_thread::sleep_for(std::chrono::milliseconds(introFadeLengthMs));
-            outroPlayer->playContinueTrack();
-            CheckVolumeOnPlay(outroPlayer);
-        }
-
-        if (!musicPlayer->isPlayingOrActive() && isMusicTrackNow) {
-            ChangeState(RadioState::MusicTrackEnded);
-            isMusicTrackNow = false;
-            return;
-        }
-
-        if (currentState == RadioState::PlayAdvert && !advertsPlayer->isPlayingOrActive()) {
-            musicPlayer->eraseChannel();
-            ChangeState(RadioState::AdvertEnded);
-            return;
-        }
-
-        if (currentState == RadioState::PlayID && !idPlayer->isPlayingOrActive()) {
-            musicPlayer->eraseChannel();
-            ChangeState(RadioState::MusicTrackEnded);
-            return;
-        }
-
-        if (currentState == RadioState::PlaySolo && !soloPlayer->isPlayingOrActive()) {
-            musicPlayer->eraseChannel();
-            ChangeState(RadioState::MusicTrackEnded);
-            return;
-        }
+        s->isReady = true;
     }
 };
+
+// --- Nodes ---
+
+BTStatus ActionPlanner::Tick(RadioStation_V* a) {
+    // segment still playing
+    if (a->bb.currentSegment && !a->bb.currentSegment->IsFinished(a->bb.virtualTimeMs)) {
+        return BTStatus::SUCCESS;
+    }
+
+    auto next = make_shared<RadioSegment>();
+    string file;
+    SegmentType type = SegmentType::MUSIC;
+
+    // advert logic
+    bool wasAd = a->bb.currentSegment && a->bb.currentSegment->type == SegmentType::ADVERT;
+    if (wasAd && a->bb.currentAdInRowCounter < a->bb.adsToPlayInRow - 1) {
+        a->bb.currentAdInRowCounter++;
+        file = a->adSelector.SelectNextTrack(a->ad_path);
+        type = SegmentType::ADVERT;
+    }
+    else if (wasAd) {
+        // advert -> Station ID
+        file = a->idSelector.SelectNextTrack(a->id_path);
+        type = SegmentType::STATION_ID;
+        a->bb.tracksSinceLastAd = 0;
+        a->bb.currentAdInRowCounter = 0;
+        a->bb.targetTracksUntilAd = Utils::getRandomIntWithDifferentProbabilities(a->adProbabilities);
+        a->bb.adsToPlayInRow = Utils::getRandomInt(1, 2);
+    }
+    // news
+    else if (a->bb.tracksSinceLastNews >= a->NEWS_THRESHOLD) {
+        file = a->newsSelector.SelectNextTrack(a->news_path);
+        type = SegmentType::NEWS;
+        a->bb.tracksSinceLastNews = 0;
+    }
+    // advert
+    else if (a->bb.tracksSinceLastAd >= a->bb.targetTracksUntilAd) {
+        file = a->adSelector.SelectNextTrack(a->ad_path);
+        type = SegmentType::ADVERT;
+        a->bb.currentAdInRowCounter = 0;
+    }
+    // solo
+    else if (a->bb.currentSegment && a->bb.currentSegment->type == SegmentType::MUSIC && Utils::getRandomBoolWithProbability(a->SOLO_PROBABILITY)) {
+        file = a->voiceSelector.SelectRandom(a->solo_path);
+        type = SegmentType::SOLO;
+    }
+    // music
+    else {
+        file = a->musicSelector.SelectNextTrack(a->path);
+        type = SegmentType::MUSIC;
+        a->bb.tracksSinceLastAd++;
+        a->bb.tracksSinceLastNews++;
+    }
+
+    // file not found
+    if (file.empty()) {
+        next->durationMs = 500;
+        next->startTimeMs = a->bb.currentSegment ? (a->bb.currentSegment->startTimeMs + a->bb.currentSegment->durationMs) : a->bb.virtualTimeMs;
+        next->isReady = true;
+    }
+    else {
+        a->ConfigureSegment(next, file, type);
+    }
+
+    a->bb.currentSegment = next;
+    return BTStatus::SUCCESS;
+}
+
+static inline CAudioEngine* eng = &AudioEngine;
+static inline int lastTalkTime = CurrentTime();
+
+BTStatus ActionExecutor::Tick(RadioStation_V* a) {
+    auto s = a->bb.currentSegment;
+    if (!s || !s->isReady || a->muted) return BTStatus::RUNNING;
+
+    int elapsed = a->bb.virtualTimeMs - s->startTimeMs;
+
+    // segment time never came or ran out
+    if (elapsed < 0 || elapsed >= s->durationMs) return BTStatus::RUNNING;
+
+    // --- Main ---
+    if (!s->isStartedInBass) {
+        s->isStartedInBass = true;
+        string p = s->fileName;
+        SoundPlayer* player = (s->type == SegmentType::MUSIC) ? a->musicPlayer : a->voicePlayer;
+
+        if (player) {
+            s->musicTicket = AudioResourceManager::EnqueuePlayback(player, [a, player, p, elapsed]() {
+                if (!player) return;
+                player->playTrackBASS(p, true);
+                player->setTrackPositionMs(elapsed);
+                // Важно: устанавливаем начальную громкость
+                player->setVolume(a->bb.currentVolume * a->basicVolume);
+                });
+        }
+    }
+
+    // --- Intro ---
+    if (s->hasIntro && !s->introFile.empty() && a->voicePlayer) {
+        bool inRange = (elapsed >= s->introOffsetMs && elapsed < (s->introOffsetMs + s->introDurationMs));
+        if (!s->introTriggered && inRange) {
+            s->introTriggered = true;
+            string vFile = s->introFile;
+            int vPos = elapsed - s->introOffsetMs;
+            s->introTicket = AudioResourceManager::EnqueuePlayback(a->voicePlayer, [a, vFile, vPos]() {
+                if (!a->voicePlayer) return;
+                a->voicePlayer->playTrackBASS(vFile, true);
+                a->voicePlayer->setTrackPositionMs(vPos);
+                a->voicePlayer->setVolume(a->basicVolume);
+                });
+        }
+    }
+
+    // --- Outro ---
+    if (s->hasOutro && !s->outroFile.empty() && a->voicePlayer) {
+        int outroStart = max(0, s->durationMs - s->outroDurationMs - (int)a->introFadeLengthMs);
+        bool inRange = (elapsed >= outroStart && elapsed < (s->durationMs - (int)a->introFadeLengthMs));
+        if (!s->outroTriggered && inRange) {
+            s->outroTriggered = true;
+            string vFile = s->outroFile;
+            int vPos = elapsed - outroStart;
+            s->outroTicket = AudioResourceManager::EnqueuePlayback(a->voicePlayer, [a, vFile, vPos]() {
+                if (!a->voicePlayer) return;
+                a->voicePlayer->playTrackBASS(vFile, true);
+                a->voicePlayer->setTrackPositionMs(vPos);
+                a->voicePlayer->setVolume(a->basicVolume);
+                });
+        }
+    }
+
+    return BTStatus::RUNNING;
+}

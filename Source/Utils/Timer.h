@@ -8,7 +8,7 @@ using s32 = int32_t;
 
 typedef u32(*TimeFunc)();
 
-u32 CurrentTime() {
+inline u32 CurrentTime() {
     return static_cast<u32>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
@@ -16,7 +16,7 @@ u32 CurrentTime() {
         );
 }
 
-u32 CurrentGameTimeNonClipped() {
+inline u32 CurrentGameTimeNonClipped() {
     return static_cast<uint64_t>(
         CTimer::m_snTimeInMillisecondsNonClipped
     );

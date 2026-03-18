@@ -1,4 +1,4 @@
-/*
+﻿/*
     by gon_iss (c) 2024
 */
 
@@ -7,17 +7,23 @@
 #include <string>
 #include <vector>
 #include <random>
+#include <map>
+#include <sstream>
+#include <functional>
 
 #include <game_sa/RenderWare.h>
-#include "Utils/Utils.h"
+#include "../Utils/Utils.h"
+#include "../Utils/pragmascope/pragmascope_client.h"
 #include "../Visual/TrackInfoVisual.h"
 #include "SoundStreamFuncs.h"
 
 using namespace std;
 
+// #define ENABLE_LOGGING
+// #define DISABLE_TRACK_CACHE
+
 class SoundPlayer
 {
-
     std::function<void(const std::string&)> onNewTrackPlayedCallback = nullptr;
 
     bool initializedBASS = false;
@@ -32,13 +38,19 @@ class SoundPlayer
     float currentVolume = 0.0f;
 
     HSTREAM stream = 0;
+#ifdef ENABLE_LOGGING
+    PragmaScope* debugScope1;
+#endif
+    static bool bassInitialized;
+
+#ifndef DISABLE_TRACK_CACHE
+    std::map<std::string, uint32_t> trackLengthCache;
+#endif
 
 public:
-
     bool isEmpty = false;
     bool isRewindNow = false;
     bool trackIsPlaying = false;
-    
 
     float rewindSpeed = 1.0f;
     float playbackSpeed = 1.0f;
@@ -49,69 +61,131 @@ public:
 
     int indexOfPlayingTrack = 999999;
 
-    // Usual soundplayer constructor, not looped by default
     SoundPlayer(std::string folder) : SoundPlayer(folder, false) {}
 
     SoundPlayer(std::string folder, bool looped) {
+        SetFolder(folder);
+        this->looped = looped;
+#ifdef ENABLE_LOGGING
+        debugScope1 = new PragmaScope("SoundPlayer", "RadioLogic1");
+        LOG("Constructor", "SoundPlayer");
+#endif
+    }
+
+    ~SoundPlayer() {
+        if (stream) {
+            BASS_ChannelStop(stream);
+            BASS_StreamFree(stream);
+        }
+#ifdef ENABLE_LOGGING
+        delete debugScope1;
+#endif
+    }
+
+    static void FreeBASSGlobal() {
+        BASS_Free();
+        bassInitialized = false;
+    }
+
+    void SetFolder(std::string folder) {
         if (folder == "" || !Utils::DirectoryCheckRelative(folder)) {
             isEmpty = true;
             return;
         }
-
         this->folder = Utils::GetCurrentDirectory() + "\\" + folder;
-        this->looped = looped;
     }
 
+    std::string GetDebugInfo() const {
+        std::stringstream ss;
+        ss << "SoundPlayer@" << static_cast<const void*>(this)
+            << " [stream:" << stream
+            << ", folder:" << folder << "]";
+        return ss.str();
+    }
 
-    void playTrackBASS(const std::string& musicfile) {
+#ifdef ENABLE_LOGGING
+    void Log(string key, string value) {
+        std::ostringstream jsonPayload;
+        jsonPayload << "{";
+        jsonPayload << "\"value\":\"" << debugScope1->escapeJson(value) << "\"";
+        jsonPayload << "}";
+        if (debugScope1) {
+            debugScope1->info(key, jsonPayload.str());
+        }
+    }
+#define LOG(key, value) Log(key, value)
+#else
+#define LOG(key, value) ((void)0)
+#endif
 
-        if (musicfile == "" || isEmpty) return;
+    void playTrackBASS(const std::string& musicfile, bool useAbsolutePath) {
+        LOG("playTrackBASS", folder);
 
-        if (!initializedBASS) {
+        std::string filePath = useAbsolutePath ? musicfile : folder + "//" + musicfile;
+        LOG("playTrackBASS", filePath);
+        LOG("playTrackBASS player isempty", std::to_string(isEmpty));
+
+        if (filePath == "" || isEmpty) return;
+
+        if (BASS_GetDevice() == -1) {
+            if (!BASS_Init(-1, 44100, 0, RsGlobal.ps->window, nullptr)) {
+                int initError = BASS_ErrorGetCode();
+                LOG("BASS_Init_Error", "Failed to initialize BASS: " + std::to_string(initError));
+                return;
+            }
             initializedBASS = true;
-            stream = NULL;
-            BASS_Init(-1, 44100, 0, RsGlobal.ps->window, nullptr);
         }
 
-        std::string filePath = folder + "//" + musicfile;
-
-        if (isEmpty || !Utils::FileCheck(filePath.c_str())) {
+        if (!Utils::FileCheck(filePath.c_str())) {
+            LOG("FileCheck_Failed", "File not found: " + filePath);
             stream = 0;
             return;
         }
 
-        BASS_ChannelStop(stream);
+        if (stream) {
+            BASS_ChannelStop(stream);
+            BASS_StreamFree(stream);
+            stream = 0;
+        }
 
         if (looped) {
-            stream = BASS_StreamCreateFile(FALSE, (filePath).c_str(), 0, 0, BASS_SAMPLE_FLOAT | BASS_SAMPLE_LOOP);
+            stream = BASS_StreamCreateFile(FALSE, filePath.c_str(), 0, 0,
+                BASS_SAMPLE_FLOAT | BASS_SAMPLE_LOOP | BASS_ASYNCFILE);
         }
         else {
-            stream = BASS_StreamCreateFile(FALSE, (filePath).c_str(), 0, 0, 0);
+            stream = BASS_StreamCreateFile(FALSE, filePath.c_str(), 0, 0, BASS_ASYNCFILE);
         }
 
-        lastplayedTrack = musicfile;
-
-        if (stream != 0) {
-
-            if(onNewTrackPlayedCallback)
-                onNewTrackPlayedCallback(musicfile);
-
-            BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, currentVolume);
-            BASS_ChannelPlay(stream, FALSE);
-            
-            trackIsPlaying = true;
-
-            if (randomizeTrackPosition) {
-                randomizeTrackPosition = false;
-                randomizePosition();
-            }
-
-            BASS_ChannelGetAttribute(stream, BASS_ATTRIB_FREQ, channelFrequency);
+        if (stream == 0) {
+            int streamError = BASS_ErrorGetCode();
+            LOG("BASS_Stream_Error", "Failed to create stream for: " + filePath + " Error: " + std::to_string(streamError));
+            return;
         }
-        else {
-            // BASS_Free();
-            // std::to_string( BASS_ErrorGetCode() )
+
+        lastplayedTrack = Utils::GetFileNameFromPath(filePath);
+
+        BASS_ChannelSetAttribute(stream, BASS_ATTRIB_VOL, currentVolume);
+
+        if (!BASS_ChannelPlay(stream, FALSE)) {
+            int playError = BASS_ErrorGetCode();
+            LOG("BASS_Play_Error", "Failed to play stream: " + std::to_string(playError));
+            return;
         }
+
+        trackIsPlaying = true;
+
+        if (randomizeTrackPosition) {
+            randomizeTrackPosition = false;
+            randomizePosition();
+        }
+
+        BASS_ChannelGetAttribute(stream, BASS_ATTRIB_FREQ, channelFrequency);
+
+        LOG("BASS_Success", "Stream created and playing: " + filePath + " | Stream: " + std::to_string((DWORD)stream));
+    }
+
+    void playTrackBASS(const std::string& musicfile) {
+        playTrackBASS(musicfile, false);
     }
 
     void setOnNewTrackPlayed(std::function<void(const std::string&)> callback) {
@@ -119,12 +193,8 @@ public:
     }
 
     float percentPlayback() {
-        
-        if ( playingStateIsStopped() ) return 0; //!hasPlayedAnyTrack() ||
-
-        float perc = SoundStreamFuncs::GetPositionPercent(stream);
-
-        return perc;
+        if (playingStateIsStopped()) return 0;
+        return SoundStreamFuncs::GetPositionPercent(stream);
     }
 
     bool playingStateIsActive() {
@@ -155,7 +225,7 @@ public:
     }
 
     bool hasPlayedAnyTrack() {
-        return playedTracksNames.size() != 0;
+        return !playedTracksNames.empty();
     }
 
     void playNextTrack() {
@@ -163,10 +233,9 @@ public:
 
         playbackSpeed = 1;
 
-        if (playedTracksNames.size() == 0)
-        {
+        if (playedTracksNames.empty()) {
             indexOfPlayingTrack = 0;
-            playNewTrack(); // new track into playlist
+            playNewTrack();
             return;
         }
 
@@ -178,25 +247,21 @@ public:
             playTrackBASS(musicfile);
         }
         else {
-            playNewTrack(); // new track into playlist
+            playNewTrack();
         }
     }
 
     void pauseTrack() {
-        if (!SoundStreamFuncs::Pause(stream)) 
-            return;
+        if (!SoundStreamFuncs::Pause(stream)) return;
 
         if (isActive()) {
             wasActiveBeforePause = true;
         }
-
         trackIsPlaying = false;
     }
 
     void stopTrack() {
-        if (!SoundStreamFuncs::Stop(stream))
-            return;
-
+        if (!SoundStreamFuncs::Stop(stream)) return;
         trackIsPlaying = false;
     }
 
@@ -205,12 +270,10 @@ public:
     }
 
     void playContinueTrack() {
-        if (!SoundStreamFuncs::PlayContinue(stream) || !wasActiveBeforePause) 
-            return;
+        if (!SoundStreamFuncs::PlayContinue(stream) || !wasActiveBeforePause) return;
 
         isRewindNow = false;
         wasActiveBeforePause = false;
-
         playbackSpeed = 1.0f;
         trackIsPlaying = true;
     }
@@ -221,9 +284,36 @@ public:
 
     int getTrackPositionMs() {
         double seconds = getCurrentPositionSeconds();
-        int positionMs = static_cast<int>(seconds * 1000);
+        return static_cast<int>(seconds * 1000);
+    }
 
-        return positionMs;
+    void setTrackPositionMs(uint32_t ms) {
+        double seconds = ms / 1000.0;
+        QWORD pos = BASS_ChannelSeconds2Bytes(stream, seconds);
+        BASS_ChannelSetPosition(stream, pos, BASS_POS_BYTE);
+    }
+
+    uint32_t getTrackLengthMs(string path) {
+#ifndef DISABLE_TRACK_CACHE
+        auto it = trackLengthCache.find(path);
+        if (it != trackLengthCache.end()) {
+            return it->second;
+        }
+#endif
+
+        HSTREAM temp = BASS_StreamCreateFile(FALSE, path.c_str(), 0, 0, BASS_STREAM_DECODE);
+        if (!temp) return 0;
+
+        double secs = BASS_ChannelBytes2Seconds(temp, BASS_ChannelGetLength(temp, BASS_POS_BYTE));
+        BASS_StreamFree(temp);
+
+        uint32_t lengthMs = static_cast<uint32_t>(secs * 1000);
+
+#ifndef DISABLE_TRACK_CACHE
+        trackLengthCache[path] = lengthMs;
+#endif
+
+        return lengthMs;
     }
 
     int getTrackLengthMs() {
@@ -233,39 +323,32 @@ public:
     std::string playNewTrack() {
         if (isEmpty) return "";
 
-        string musicfile = "";
-        musicfile = Utils::pick_random_music_file(folder);
-
+        string musicfile = Utils::pick_random_music_file(folder);
         bool playedRecently = trackWasPlayedRecently(10, musicfile);
 
         int countTries = 0;
-
-        while (playedRecently)
-        {
+        while (playedRecently && countTries <= 15) {
             musicfile = Utils::pick_random_music_file(folder);
             playedRecently = trackWasPlayedRecently(10, musicfile);
             countTries++;
-            if (countTries > 15) break;
         }
 
-        if (playedTracksNames.size() > 10) playedTracksNames[0].erase();
+        if (playedTracksNames.size() > 10) {
+            playedTracksNames.erase(playedTracksNames.begin());
+        }
 
         playedTracksNames.push_back(musicfile);
         indexOfPlayingTrack++;
 
-        std::string playedRecentlyStr = (playedRecently) ? "true" : "false";
-
         playTrackBASS(musicfile);
-
         return musicfile;
     }
 
     void randomizePosition() {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<int> dis(0, 100 - 1);
-        float positionPercent = (float)dis(gen);
-
+        std::uniform_int_distribution<int> dis(0, 99);
+        float positionPercent = static_cast<float>(dis(gen));
         setPositionPercent(positionPercent);
     }
 
@@ -278,56 +361,41 @@ public:
     }
 
     void speedFastForward() {
-
         isRewindNow = false;
-
-        if (playbackSpeed < 6.5) playbackSpeed += 0.1f;
-
+        if (playbackSpeed < 6.5f) playbackSpeed += 0.1f;
         SoundStreamFuncs::SetSpeed(stream, channelFrequency, playbackSpeed);
     }
 
     void speedNormal() {
-
         isRewindNow = false;
         rewindSpeed = 1.0f;
         playbackSpeed = 1.0f;
-
         SoundStreamFuncs::SetSpeed(stream, channelFrequency, playbackSpeed);
     }
 
     void setVolume(float volume) {
-        if (!SoundStreamFuncs::SetVolume(stream, volume))
-            return;
-
-        this->currentVolume = volume;
+        if (!SoundStreamFuncs::SetVolume(stream, volume)) return;
+        currentVolume = volume;
     }
 
     void setVolumeMute() {
-
         float volume = SoundStreamFuncs::GetVolume(stream);
-
         if (volume != 0) {
-            //volumeBeforeMute = volume;
             setVolume(0);
         }
     }
 
     void setVolumeUnmute(float basicVolume) {
-
         float volume = SoundStreamFuncs::GetVolume(stream);
-
         if (volume == 0) {
             setVolume(basicVolume);
         }
     }
 
     void speedRewind() {
-        if(rewindSpeed < 6.5f) rewindSpeed += 0.1;
-
+        if (rewindSpeed < 6.5f) rewindSpeed += 0.1f;
         if (CurrentTime() < timeLastRewind + 300) return;
-        
         timeLastRewind = CurrentTime();
-
         pauseTrack();
         rewindByASecond();
     }
@@ -338,32 +406,25 @@ public:
     }
 
     bool trackWasPlayedRecently(int lastTracks, string filename) {
-        bool containsTarget = false;
-        if (isEmpty) return containsTarget;
-
-        for (int i = 0; i < playedTracksNames.size(); ++i) {
-            if (playedTracksNames[i] == filename) {
-                containsTarget = true;
-                break;
-            }
+        if (isEmpty) return false;
+        for (const auto& name : playedTracksNames) {
+            if (name == filename) return true;
         }
-
-        return containsTarget;
+        return false;
     }
 
     void playPreviousTrack(bool goToTheLastAfterFirst) {
-        if (playedTracksNames.size() == 0)
-        {
-            return;
-        }
+        if (playedTracksNames.empty()) return;
 
         indexOfPlayingTrack--;
 
         if (goToTheLastAfterFirst) {
-            if (indexOfPlayingTrack < 0) indexOfPlayingTrack = playedTracksNames.size() - 1;
+            if (indexOfPlayingTrack < 0)
+                indexOfPlayingTrack = playedTracksNames.size() - 1;
         }
         else {
-            if (indexOfPlayingTrack < 0) indexOfPlayingTrack = 0;
+            if (indexOfPlayingTrack < 0)
+                indexOfPlayingTrack = 0;
         }
 
         string musicfile = playedTracksNames[indexOfPlayingTrack];

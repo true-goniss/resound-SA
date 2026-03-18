@@ -1,10 +1,12 @@
 #pragma once
 #include <game_sa/CSprite2d.h>
 #include <extensions/Screen.h>
-#include "Visual/Textures/Textures.h"
-#include "Visual/Fonts/DXFont.h"
-#include "Utils/ShapeHelper.h"
-#include "Animations/OpacityAnimation.h"
+
+#include "Textures/Textures.h"
+#include "Fonts/DXFont.h"
+
+#include "../Utils/ShapeHelper.h"
+#include "../Animations/OpacityAnimation.h"
 
 using namespace plugin;
 

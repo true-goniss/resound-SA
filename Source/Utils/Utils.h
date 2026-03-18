@@ -9,6 +9,11 @@
 #include <random>
 #include <map>
 
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <algorithm>
+
 namespace fs = std::filesystem;
 
 static class Utils
@@ -213,6 +218,14 @@ static class Utils
         file.close();
 
         return singleFileTracks;
+    }
+
+    static std::string GetFileNameFromPath(const std::string& path) {
+        size_t lastSlash = path.find_last_of("\\/");
+        if (lastSlash != std::string::npos) {
+            return path.substr(lastSlash + 1);
+        }
+        return path;
     }
 
     static int GetPartNumberFromFilename(const std::string& filename) {

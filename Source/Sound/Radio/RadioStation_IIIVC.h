@@ -10,6 +10,8 @@
 
 class RadioStation_IIIVC : public RadioStation
 {
+    float currentVolume = 0;
+
     public:
 
     RadioStation_IIIVC(std::string folder, SettingsRadioStation* settings) : RadioStation(folder, settings) {
@@ -41,23 +43,54 @@ class RadioStation_IIIVC : public RadioStation
     }
 
     void Randomize() override {
-        RadioStation::Randomize();
+        musicPlayer->randomizePosition();
+        Mute();
+        //RadioStation::Randomize();
+    }
+
+    void UpdateVolume(bool isMissionTalkingNow) override {
+
+        if (muted) {
+            if(musicPlayer)
+                musicPlayer->setVolume(0);
+
+            return;
+        }
+
+        float targetVolume = isMissionTalkingNow ? VOL_MULT_DUCKED : VOL_MULT_NORMAL;
+
+        if (abs(currentVolume - targetVolume) > 0.01f) {
+            float step = FADE_SPEED * 16.0f;
+            if (currentVolume < targetVolume)
+                currentVolume = min(currentVolume + step, targetVolume);
+            else
+                currentVolume = max(currentVolume - step, targetVolume);
+
+            if (musicPlayer) {
+                musicPlayer->setVolume(currentVolume * basicVolume);
+            }
+        }
     }
 
     void Mute() override {
-        RadioStation::Mute();
+        musicPlayer->setVolumeMute();
+        //RadioStation::Mute();
     }
 
     void Unmute() override {
-        RadioStation::Unmute();
+        musicPlayer->setVolumeUnmute(this->basicVolume);
+        //RadioStation::Unmute();
     }
 
     void Stop() override {
-        RadioStation::Stop();
+        musicPlayer->stopTrack();
+        //RadioStation::Stop();
     }
 
     void PlayMusicTrack() override {
-        RadioStation::PlayMusicTrack();
+        trackname = musicPlayer->playNewTrack();
+        CheckVolumeOnPlay(musicPlayer);
+        // RadioStation::PlayMusicTrack();
     }
 
     protected:

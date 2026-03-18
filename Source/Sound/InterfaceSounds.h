@@ -19,27 +19,36 @@ public:
     static inline const std::string radioInterfaceSoundsPath = "resound\\sounds\\radiosystem\\";
 
     static HSTREAM Play(const std::string& path, const std::string& soundName, bool looped, bool playIfAlreadyPlaying) {
+        auto it = BASS_Streams.find(soundName);
+        bool exists = (it != BASS_Streams.end());
 
-        if (soundWasPlayed(soundName) && BASS_ChannelIsActive(BASS_Streams[soundName]) && !playIfAlreadyPlaying) {
+        // sound is playing, no need to restart
+        if (exists && BASS_ChannelIsActive(it->second) == BASS_ACTIVE_PLAYING && !playIfAlreadyPlaying) {
+            return it->second;
+        }
+
+        // sound is in the memory, free the stream
+        if (exists && it->second != 0) {
+            BASS_ChannelStop(it->second);
+            BASS_StreamFree(it->second);
+            BASS_Streams[soundName] = 0; // in case we load a new one
+        }
+
+        // create the new one
+        DWORD flags = (looped) ? (BASS_SAMPLE_FLOAT | BASS_SAMPLE_LOOP) : 0;
+        HSTREAM newStream = BASS_StreamCreateFile(FALSE, path.c_str(), 0, 0, flags);
+
+        if (newStream == 0) {
+            // file not found or corrupted
             return 0;
         }
 
-        if (looped) {
-            BASS_Streams[soundName] = BASS_StreamCreateFile(FALSE, path.c_str(), 0, 0, BASS_SAMPLE_FLOAT | BASS_SAMPLE_LOOP);
-        }
-        else {
-            BASS_Streams[soundName] = BASS_StreamCreateFile(FALSE, path.c_str(), 0, 0, 0);
-        }
+        // save and run
+        BASS_Streams[soundName] = newStream;
+        BASS_ChannelSetAttribute(newStream, BASS_ATTRIB_VOL, basicVolume);
+        BASS_ChannelPlay(newStream, FALSE);
 
-        if (BASS_Streams[soundName] == 0) {
-            BASS_Free();
-            return 0;
-        }
-
-        BASS_ChannelPlay(BASS_Streams[soundName], FALSE);
-        SetVolume(soundName, basicVolume);
-
-        return BASS_Streams[soundName];
+        return newStream;
     }
 
     //static void randomize(const std::string& soundName) {

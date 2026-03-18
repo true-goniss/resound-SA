@@ -13,6 +13,8 @@
 
 class RadioStation_ConsistentlyPlayed : public RadioStation
 {
+    float currentVolume = 0;
+
     std::map<int, std::string> parts;
     int currentPart = -1;
 
@@ -28,9 +30,7 @@ class RadioStation_ConsistentlyPlayed : public RadioStation
         managePlaybackThread.detach();
     }
 
-    void Launch() override {
-
-    }
+    // void Launch() override { }
 
     void Randomize() override {
         int maxPart = parts.rbegin()->first;
@@ -41,8 +41,28 @@ class RadioStation_ConsistentlyPlayed : public RadioStation
         UpdateTrackNames();
     }
 
-    void PlayMusicTrack() override {
+    void UpdateVolume(bool isMissionTalkingNow) override {
 
+        if (muted) {
+            if (musicPlayer)
+                musicPlayer->setVolume(0);
+
+            return;
+        }
+
+        float targetVolume = isMissionTalkingNow ? VOL_MULT_DUCKED : VOL_MULT_NORMAL;
+
+        if (abs(currentVolume - targetVolume) > 0.01f) {
+            float step = FADE_SPEED * 16.0f;
+            if (currentVolume < targetVolume)
+                currentVolume = min(currentVolume + step, targetVolume);
+            else
+                currentVolume = max(currentVolume - step, targetVolume);
+
+            if (musicPlayer) {
+                musicPlayer->setVolume(currentVolume * basicVolume);
+            }
+        }
     }
 
     std::pair<std::string, std::string> TryGetArtistTitle() const override {

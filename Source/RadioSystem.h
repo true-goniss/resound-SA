@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CAEAudioHardware.h"
 #include "CAERadioTrackManager.h"
 #include "CAudioEngine.h";
@@ -15,9 +15,9 @@
 
 #include "Settings/Settings.h"
 #include "Sound/Radio/Utils/MusicTracksNames_SA.h"
+#include "Utils/pragmascope/pragmascope_client.h"
 
 #include "Components/RadioWheel/RadioWheel.h"
-
 
 namespace fs = std::filesystem;
 
@@ -26,6 +26,9 @@ using namespace plugin;
 static class RadioSystem
 {
     static inline RadioWheel* radioWheel = new RadioWheel();;
+    static inline PragmaScope* sysScope = new PragmaScope("RadioSystem", "MainLoop");
+
+    static inline SoundPlayer* testPlayer = nullptr;
 
     public:
 
@@ -36,6 +39,9 @@ static class RadioSystem
         Initialised = true;
 
         MusicTracksNames_SA::Init();
+        AudioResourceManager::Init();
+
+        testPlayer = new SoundPlayer("resound\\radio\\Non Stop Pop\\", false);
 
         patch::RedirectJump(0x4EB660, RadioSystem::Event_SA_RetuneRadio); // CAERadioTrackManager::CheckForStationRetune()
         patch::RedirectJump(0x507030, RadioSystem::Disable_SA_RadioName); // CAudioEngine::DisplayRadioStationName
@@ -44,8 +50,9 @@ static class RadioSystem
             ManagePlayback();
         };
 
-        std::thread soundFadeProcessThread(&SoundFadeProcess_CustomStations);
-        soundFadeProcessThread.detach();
+        Events::reInitGameEvent += [] {
+            RandomizeCustomStations();
+        };
 
         GamePausedWatcher::AddHandler([](GamePausedWatcher::EventType eventType) {
 
@@ -102,6 +109,8 @@ static class RadioSystem
     static inline int lastTalkTime = CurrentTime();
     static inline int talkFadeOutTime = CurrentTime();
     static inline float volumeDecreaseOnTalkMult = 0.2f;
+    static inline unsigned int lastUpdateTime = 0;
+    static inline unsigned int lastFrameTime = 0;
 
     static inline void Disable_SA_RadioName() {}
 
@@ -183,16 +192,49 @@ static class RadioSystem
     };
 
     static void ManagePlayback() {
+        unsigned int currentTime = CurrentTime();
 
-        if (!isStationsLaunched)
-        {
+        if (!isStationsLaunched) {
             isStationsLaunched = true;
-            MuteCustomStations();
             LaunchCustomStations();
+            lastFrameTime = currentTime;
+            return;
+        }
+
+        // Calculating deltaTime considering game pause 
+        float deltaTimeMs = (float)(currentTime - lastFrameTime);
+        lastFrameTime = currentTime;
+
+        bool isPaused = CTimer::m_CodePause || CTimer::m_UserPause;
+        if (isPaused) {
+            lastFrameTime = currentTime; // After pause
+            return;
+        }
+
+        // Clamp deltaTime
+        if (deltaTimeMs > 100.0f) deltaTimeMs = 100.0f;
+
+        bool talking = !plugin::CallMethodAndReturn<bool, 0x5072C0, CAudioEngine*>(eng, 0);
+
+        if (talking) {
+            lastTalkTime = CurrentTime();
+        }
+
+        int talkTimeDiff = CurrentTime() - lastTalkTime;
+        bool isMissionTalkingNow = (talkTimeDiff < 300);
+
+        // Update custom stations logic and volume
+        for (RadioStation* station : Custom_Radio_Stations) {
+            station->Update(deltaTimeMs);
+
+            if (station->isTunedNow && !station->muted) {
+                station->UpdateVolume(isMissionTalkingNow);
+            }
         }
 
         CPed* playa = FindPlayerPed();
 
+        // Check player condition
         if (!(Command<Commands::IS_PLAYER_PLAYING>(0) && CanRetuneRadioStation(playa, FindPlayerVehicle(-1, false))))
         {
             MuteCustomStations();
@@ -377,11 +419,11 @@ static class RadioSystem
         else {
             int customIndex = stationId - 14;
             if (customIndex >= 0 && customIndex < Custom_Radio_Stations.size()) {
+
                 for (auto* station : Custom_Radio_Stations) {
-                    station->isTunedNow = false;
+                    station->TuneOut();
                 }
-                Custom_Radio_Stations[customIndex]->isTunedNow = true;
-                Custom_Radio_Stations[customIndex]->Unmute();
+                Custom_Radio_Stations[customIndex]->TuneIn();
             }
         }  
     }
@@ -427,6 +469,8 @@ static class RadioSystem
     static inline void LaunchCustomStations() {
         for (RadioStation* station : Custom_Radio_Stations) {
             station->Launch();
+            station->Randomize();
+            station->Mute();
         }
     }
 
@@ -440,59 +484,6 @@ static class RadioSystem
         for (RadioStation* station : Custom_Radio_Stations) {
             station->Mute();
         }
-    }
-
-    static inline void SoundFadeProcess_CustomStations() {
-
-        while (true) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-            for (RadioStation* station : Custom_Radio_Stations) {
-
-                if (station->muted) continue;
-
-                bool talking = !plugin::CallMethodAndReturn<bool, 0x5072C0, CAudioEngine*>(eng, 0);
-
-                float decreasedVolume = station->basicVolume * volumeDecreaseOnTalkMult;
-
-                if (talking) {
-                    lastTalkTime = CurrentTime();
-                    station->SetVolumeAllPlayers(decreasedVolume);
-                    continue;
-                }
-                else {
-                    int talkTimeDiff = CurrentTime() - lastTalkTime;
-
-                    if (talkTimeDiff < 300) {
-                        station->SetVolumeAllPlayers(decreasedVolume);
-                        talkFadeOutTime = CurrentTime();
-                        continue;
-                    }
-                    else if (talkTimeDiff >= 300 && talkTimeDiff < 1200) {
-                        station->SetVolumeAllPlayers((decreasedVolume + ((station->basicVolume - decreasedVolume) * Utils::getElapsedTimePercentage(300, talkFadeOutTime) / 100)));
-                        continue;
-                    }
-                }
-
-                if (station->muted) {
-                    station->musicPlayer->setVolume(0);
-                    continue;
-                }
-
-                if (station->introAndOutroMusicFade->isActive) {
-                    float volumeFadedValue = station->introAndOutroMusicFade->GetValue(station->basicVolume * station->introFadeMinVolumeMult, station->basicVolume, station->introFadeLengthMs, station->wholeIntroFadeLength);
-                    station->musicPlayer->setVolume(volumeFadedValue);
-                }
-                else {
-                    station->musicPlayer->setVolume(station->basicVolume);
-                }
-            }
-        }
-    }
-
-    static inline void UnmuteCustomStation(int index) {
-        MuteSA_Radio();
-        Custom_Radio_Stations[index]->Unmute();
     }
 
     static bool CanRetuneRadioStation(CPed* playa, CVehicle* vehicle) {

@@ -1,8 +1,9 @@
+﻿
+#pragma once
 /*
-    by gon_iss (c) 2024
+    by gon_iss (c) 2024 - 2026
 */
 
-#pragma once
 #include "../../Utils/Utils.h"
 #include "../../Settings/SettingsRadioStation.h"
 #include "../../Animations/SoundFade.h"
@@ -47,6 +48,10 @@ class RadioStation
     int introFadeLengthMs = 500;
     int wholeIntroFadeLength = 5000;
 
+    const float VOL_MULT_DUCKED = 0.25f;
+    const float VOL_MULT_NORMAL = 1.0f;
+    const float FADE_SPEED = 0.003f; // ducking speed
+
     RadioStation(std::string folder, SettingsRadioStation* settings) : folder(folder), settings(settings) {
         this->folder = folder;
         this->name = folder;
@@ -64,12 +69,14 @@ class RadioStation
             }
         });
 
-        Events::reInitGameEvent += [this] {
-            Randomize();
-        };
+
 
         //Mute();
     }
+
+    virtual void UpdateVolume(bool isMissionTalkingNow) {}
+
+    virtual void Update(float deltaTimeMs) {}
 
     int GetStationId() const {
         static std::hash<std::string> hasher;
@@ -79,7 +86,10 @@ class RadioStation
     void InitPlayer(SoundPlayer*& player, const std::string& path, bool looped) {
         player = new SoundPlayer(path, looped);
 
-        musicPlayer->setVolume(basicVolume);
+        if (player) {
+            player->setVolume(basicVolume);
+        }
+
         soundPlayers.push_back(player);
     }
 
@@ -136,6 +146,15 @@ class RadioStation
 
         muted = false;
         UnmuteAllPlayers();
+    }
+
+    virtual void TuneIn() {
+        isTunedNow = true;
+        Unmute();
+    }
+
+    virtual void TuneOut() {
+        isTunedNow = false;
     }
 
     void CheckVolumeOnPlay(SoundPlayer* player) {
