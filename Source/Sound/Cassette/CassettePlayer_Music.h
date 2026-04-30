@@ -26,6 +26,7 @@ class CassettePlayer_Music
     float fastfwdVolume = 0.1f;
     
     bool pausedByGame = false;
+    bool isGamePausedNow = false;
 
 public:
 
@@ -48,10 +49,13 @@ public:
             {
                 case GamePausedWatcher::EventType::Paused:
 
+
                     if (soundPlayer->isPlayingOrActive()) {
                         PauseTrack(false);
                         pausedByGame = true;
                     }
+
+                    this->isGamePausedNow = true;
 
                     break;
 
@@ -61,6 +65,8 @@ public:
                         pausedByGame = false;
                         PlayContinueTrack(false);
                     }
+
+                    this->isGamePausedNow = false;
                         
                     break;
                 }
@@ -104,6 +110,9 @@ protected:
         
         while (true) {
             this_thread::sleep_for(chrono::milliseconds(80));
+
+            if (isGamePausedNow)
+                continue;
 
             if (KeyPressed(VK_INSERT) && Utils::timePassedEnough(timeLastKeypress, 300)) {
                 timeLastKeypress = CurrentTime();
